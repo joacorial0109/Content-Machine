@@ -11,11 +11,17 @@ export function secondsToSrt(value) {
 }
 
 export function makeSrt(scenes, duration) {
-  const weights = scenes.map(s => Math.max(1, s.line.split(/\s+/).length));
+  const chunks = scenes.flatMap(scene => {
+    const words = scene.line.trim().split(/\s+/);
+    const parts = [];
+    for (let i = 0; i < words.length; i += 6) parts.push({ line: words.slice(i, i + 6).join(" ") });
+    return parts;
+  });
+  const weights = chunks.map(s => Math.max(1, s.line.split(/\s+/).length));
   const total = weights.reduce((a, b) => a + b, 0);
   let cursor = 0;
-  return scenes.map((scene, i) => {
-    const end = i === scenes.length - 1 ? duration : cursor + duration * weights[i] / total;
+  return chunks.map((scene, i) => {
+    const end = i === chunks.length - 1 ? duration : cursor + duration * weights[i] / total;
     const block = `${i + 1}\n${secondsToSrt(cursor)} --> ${secondsToSrt(end)}\n${scene.line}\n`;
     cursor = end;
     return block;
@@ -41,6 +47,36 @@ export async function durationOf(file, cfg) {
   return Number(match[0]);
 }
 
+function ffmpegPath(file) {
+  return file.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+}
+
+export async function createLocalVoice(textFile, outputFile) {
+  const safeText = textFile.replace(/'/g, "''");
+  const safeOutput = outputFile.replace(/'/g, "''");
+  const command = `Add-Type -AssemblyName System.Speech; $v=New-Object System.Speech.Synthesis.SpeechSynthesizer; $es=$v.GetInstalledVoices() | Where-Object {$_.VoiceInfo.Culture.Name -like 'es-*'} | Select-Object -First 1; if($es){$v.SelectVoice($es.VoiceInfo.Name)}; $v.Rate=0; $v.Volume=100; $v.SetOutputToWaveFile('${safeOutput}'); $v.Speak([IO.File]::ReadAllText('${safeText}')); $v.Dispose()`;
+  await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], path.dirname(outputFile));
+}
+
+export async function composeLocal({ voice, subtitles, output, duration }, cfg) {
+  const srt = ffmpegPath(subtitles);
+  const font = ffmpegPath("C:\\Windows\\Fonts\\arialbd.ttf");
+  const filter = [
+    "[0:v]drawbox=x=70:y=70:w=940:h=1780:color=0xf4f0e7:t=fill,drawbox=x=70:y=70:w=14:h=1780:color=0xff5a36:t=fill[card]",
+    `[card]drawtext=fontfile='${font}':text='CONTENT MACHINE':x=125:y=145:fontsize=34:fontcolor=0x171714[branded]`,
+    "[1:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000,asplit=2[audio][waveaudio]",
+    "[waveaudio]showwaves=s=820x130:mode=line:colors=0xff5a36:scale=sqrt[wave]",
+    "[branded][wave]overlay=130:1480[visual]",
+    `[visual]subtitles='${srt}':force_style='FontName=Arial,FontSize=12,Bold=1,PrimaryColour=&H00171714,OutlineColour=&H00F4F0E7,BorderStyle=1,Outline=3,Alignment=2,MarginL=25,MarginR=25,MarginV=105'[video]`
+  ].join(";");
+  await run(cfg.ffmpeg, [
+    "-y", "-f", "lavfi", "-i", `color=c=0x171714:s=1080x1920:r=30:d=${duration}`,
+    "-i", voice, "-filter_complex", filter, "-map", "[video]", "-map", "[audio]",
+    "-t", String(duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", output
+  ], path.dirname(output));
+}
+
 export async function compose({ avatar, broll, subtitles, output, duration, music }, cfg) {
   const inputs = ["-i", avatar];
   for (const file of broll) inputs.push("-stream_loop", "-1", "-i", file);
@@ -57,7 +93,7 @@ export async function compose({ avatar, broll, subtitles, output, duration, musi
     filters.push(`[${current}][b${index}]overlay=0:0:enable='between(t,${start.toFixed(2)},${end.toFixed(2)})'[${next}]`);
     current = next;
   });
-  const escapedSrt = subtitles.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+  const escapedSrt = ffmpegPath(subtitles);
   filters.push(`[${current}]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=180'[video]`);
 
   const args = ["-y", ...inputs, "-filter_complex", filters.join(";"), "-map", "[video]", "-map", "0:a"];

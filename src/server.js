@@ -3,7 +3,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { config } from "./config.js";
+import { config, publicSettings, saveSettings } from "./config.js";
 import { runPipeline } from "./pipeline.js";
 
 const publicDir = path.resolve("public");
@@ -42,14 +42,24 @@ async function serve(res, file) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
-    if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, { demo: config.demo, ready: true });
+    if (req.method === "GET" && url.pathname === "/api/status") return json(res, 200, { demo: config.demo, ready: true, settings: publicSettings() });
+    if (req.method === "GET" && url.pathname === "/api/settings") return json(res, 200, publicSettings());
+    if (req.method === "POST" && url.pathname === "/api/settings") {
+      const data = await body(req);
+      return json(res, 200, saveSettings(data));
+    }
     if (req.method === "POST" && url.pathname === "/api/jobs") {
       const data = await body(req);
       const trigger = String(data.trigger || "").trim();
       if (trigger.length < 10) return json(res, 400, { error: "Escribí una idea, noticia o texto de al menos 10 caracteres." });
       const job = { id: crypto.randomUUID(), status: "running", stage: "queued", message: "Preparando", createdAt: new Date().toISOString() };
       jobs.set(job.id, job);
-      runPipeline(job, trigger, (stage, message) => Object.assign(job, { stage, message }))
+      const options = {
+        platform: String(data.platform || "TikTok e Instagram Reels").slice(0, 60),
+        tone: String(data.tone || "directo").slice(0, 40),
+        duration: Math.min(90, Math.max(20, Number(data.duration) || 45))
+      };
+      runPipeline(job, trigger, options, (stage, message) => Object.assign(job, { stage, message }))
         .then(result => Object.assign(job, { status: "completed", stage: "done", message: "Listo", result }))
         .catch(error => Object.assign(job, { status: "failed", message: error.message }));
       return json(res, 202, job);
@@ -67,4 +77,4 @@ const server = http.createServer(async (req, res) => {
   } catch (error) { json(res, 500, { error: error.message }); }
 });
 
-server.listen(config.port, () => console.log(`Content Machine: http://localhost:${config.port} (${config.demo ? "demo" : "real"})`));
+server.listen(config.port, "127.0.0.1", () => console.log(`Content Machine: http://localhost:${config.port} (${config.demo ? "demo" : "real"})`));

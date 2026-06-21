@@ -1,4 +1,5 @@
 .env
+settings.json
 runs/
 node_modules/
 *.log
