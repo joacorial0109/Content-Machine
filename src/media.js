@@ -28,6 +28,19 @@ export function makeSrt(scenes, duration) {
   }).join("\n");
 }
 
+export function makeSceneOverlaySrt(scenes, duration) {
+  const weights = scenes.map(scene => Math.max(0.5, Number(scene.estimatedDuration) || 1));
+  const total = weights.reduce((sum, value) => sum + value, 0) || 1;
+  let cursor = 0;
+  return scenes.map((scene, index) => {
+    const end = index === scenes.length - 1 ? duration : cursor + duration * weights[index] / total;
+    const text = String(scene.overlayText || "").trim();
+    const block = text ? `${index + 1}\n${secondsToSrt(cursor)} --> ${secondsToSrt(end)}\n${text}\n` : "";
+    cursor = end;
+    return block;
+  }).filter(Boolean).join("\n");
+}
+
 export function run(binary, args, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { cwd, windowsHide: true });
@@ -67,7 +80,7 @@ export async function composeLocal({ voice, subtitles, output, duration }, cfg) 
     "[1:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000,asplit=2[audio][waveaudio]",
     "[waveaudio]showwaves=s=820x130:mode=line:colors=0xff5a36:scale=sqrt[wave]",
     "[branded][wave]overlay=130:1480[visual]",
-    `[visual]subtitles='${srt}':force_style='FontName=Arial,FontSize=12,Bold=1,PrimaryColour=&H00171714,OutlineColour=&H00F4F0E7,BorderStyle=1,Outline=3,Alignment=2,MarginL=25,MarginR=25,MarginV=105'[video]`
+    `[visual]subtitles='${srt}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00171714,OutlineColour=&H00F4F0E7,BorderStyle=1,Outline=3,Alignment=2,MarginL=35,MarginR=35,MarginV=105'[video]`
   ].join(";");
   await run(cfg.ffmpeg, [
     "-y", "-f", "lavfi", "-i", `color=c=0x171714:s=1080x1920:r=30:d=${duration}`,
@@ -85,28 +98,42 @@ export async function createSilentAudio(outputFile, duration, cfg) {
   return outputFile;
 }
 
-export async function composeBrollLocal({ voice, broll, subtitles, output, duration, music }, cfg) {
-  if (!broll.length) return composeLocal({ voice, subtitles, output, duration }, cfg);
+export async function fitAudioDuration(inputFile, outputFile, inputDuration, targetDuration, cfg) {
+  let rate = Math.max(0.01, Number(inputDuration) / Number(targetDuration));
+  const filters = [];
+  while (rate < 0.5) { filters.push("atempo=0.5"); rate /= 0.5; }
+  while (rate > 2) { filters.push("atempo=2"); rate /= 2; }
+  filters.push(`atempo=${rate.toFixed(6)}`, "apad", `atrim=duration=${targetDuration}`);
+  await run(cfg.ffmpeg, [
+    "-y", "-i", inputFile, "-af", filters.join(","),
+    "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", outputFile
+  ], path.dirname(outputFile));
+  return outputFile;
+}
+
+export async function composeBrollLocal({ voice, timeline, subtitles, overlays, output, duration, music }, cfg) {
+  if (!timeline.length) return composeLocal({ voice, subtitles, output, duration }, cfg);
   const inputs = ["-i", voice];
-  for (const file of broll) inputs.push("-stream_loop", "-1", "-i", file);
+  for (const segment of timeline) inputs.push("-stream_loop", "-1", "-i", segment.file);
   if (music) inputs.push("-stream_loop", "-1", "-i", music);
 
-  const slice = duration / broll.length;
   const filters = [];
   const segments = [];
-  broll.forEach((_, index) => {
+  timeline.forEach((segment, index) => {
     const name = `scene${index}`;
-    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,trim=duration=${slice.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
+    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0006,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,trim=duration=${segment.duration.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
     segments.push(`[${name}]`);
   });
-  filters.push(`${segments.join("")}concat=n=${broll.length}:v=1:a=0[montage]`);
+  filters.push(`${segments.join("")}concat=n=${timeline.length}:v=1:a=0[montage]`);
   const escapedSrt = ffmpegPath(subtitles);
-  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=12,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=25,MarginR=25,MarginV=105'[video]`);
+  const escapedOverlays = ffmpegPath(overlays);
+  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=35,MarginR=35,MarginV=75'[captioned]`);
+  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=8,MarginL=40,MarginR=40,MarginV=35'[video]`);
   filters.push("[0:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000[voice]");
 
   let audioMap = "[voice]";
   if (music) {
-    const musicIndex = broll.length + 1;
+    const musicIndex = timeline.length + 1;
     filters.push(`[${musicIndex}:a]volume=0.10[music]`);
     filters.push("[voice][music]amix=inputs=2:duration=first[audio]");
     audioMap = "[audio]";

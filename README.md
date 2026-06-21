@@ -70,6 +70,8 @@ Configuración completa disponible:
 PORT=3000
 DEMO_MODE=true
 AVATAR_MODE=local
+TARGET_DURATION_SECONDS=35
+MIN_DURATION_SECONDS=25
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 HEYGEN_API_KEY=
@@ -81,7 +83,7 @@ FFMPEG_PATH=ffmpeg
 FFPROBE_PATH=ffprobe
 ```
 
-`AVATAR_MODE` solo acepta `local` o `heygen`. Para probar OpenAI + Pexels sin HeyGen, usá `DEMO_MODE=false` y `AVATAR_MODE=local`. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
+`AVATAR_MODE` solo acepta `local` o `heygen`. Para probar OpenAI + Pexels sin HeyGen, usá `DEMO_MODE=false` y `AVATAR_MODE=local`. `TARGET_DURATION_SECONDS` define el objetivo del guion y render; `MIN_DURATION_SECONDS` impide aceptar videos demasiado cortos. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
 
 No subas `.env`, `settings.json`, claves, voces, videos generados ni archivos de usuario. Ya están excluidos por `.gitignore`.
 
@@ -120,6 +122,8 @@ El modo demo usa una voz sintética instalada en Windows. Los archivos quedan en
 4. Reiniciá el servidor y generá primero un video corto.
 
 Este modo usa voz sintética de Windows cuando está disponible. Si falla, intenta OpenAI TTS. Si ambas opciones fallan, genera una pista silenciosa para que el render no quede bloqueado; esta degradación debe revisarse antes de publicar.
+
+El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos y duración estimada. El montaje corta cada 3 a 5 segundos, aplica movimiento suave a los clips y repite material cuando hace falta para alcanzar la duración objetivo. Cada ejecución guarda `report.json` con duración final, escenas, clips descargados y usados, fallbacks, warnings y errores.
 
 ### Flujo completo con HeyGen
 

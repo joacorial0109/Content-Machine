@@ -24,6 +24,8 @@ export const config = {
   port: Number(process.env.PORT || 3000),
   demo: saved.demo ?? process.env.DEMO_MODE !== "false",
   avatarMode: saved.avatarMode || process.env.AVATAR_MODE || "local",
+  targetDuration: Math.max(1, Number(process.env.TARGET_DURATION_SECONDS) || 35),
+  minDuration: Math.max(1, Number(process.env.MIN_DURATION_SECONDS) || 25),
   openaiKey: saved.openaiKey || process.env.OPENAI_API_KEY || "",
   openaiModel: saved.openaiModel || process.env.OPENAI_MODEL || "gpt-4.1-mini",
   heygenKey: saved.heygenKey || process.env.HEYGEN_API_KEY || "",
@@ -39,6 +41,7 @@ export function publicSettings() {
   const readyForSelectedMode = missingForRealConfig(config).length === 0;
   return {
     demo: config.demo, avatarMode: config.avatarMode, openaiModel: config.openaiModel,
+    targetDuration: config.targetDuration, minDuration: config.minDuration,
     hasOpenaiKey: Boolean(config.openaiKey), hasHeygenKey: Boolean(config.heygenKey),
     hasPexelsKey: Boolean(config.pexelsKey), avatarId: config.avatarId,
     voiceId: config.voiceId, musicFile: config.musicFile,

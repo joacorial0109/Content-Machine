@@ -60,12 +60,13 @@ function showProgress(message) {
 function showComplete(data) {
   const plan = data.plan;
   const sources = (plan.sources || []).filter(s => /^https?:\/\//.test(s.url)).map(s => `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></li>`).join("");
+  const warnings = (data.warnings || []).map(message => `<li>${escapeHtml(message)}</li>`).join("");
   const modeNote = data.demo
     ? "Demo local sin APIs externas."
     : data.avatarMode === "local"
       ? "Modo real local: guion de OpenAI, b-roll de Pexels y voz local o OpenAI TTS."
       : "Modo HeyGen con avatar completo.";
-  result.innerHTML = `<div class="complete"><h2>Reel listo.</h2>${data.videoUrl ? `<video controls src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" download="reel.mp4">DESCARGAR MP4</a></p>` : ""}<h4>HOOK</h4><p>${escapeHtml(plan.hook)}</p><h4>GUION</h4><p>${escapeHtml(plan.narration)}</p><h4>CAPTION</h4><p>${escapeHtml(plan.caption)}</p>${sources ? `<h4>FUENTES</h4><ul class="sources">${sources}</ul>` : ""}<p><small>${modeNote}</small></p></div>`;
+  result.innerHTML = `<div class="complete"><h2>Reel listo.</h2>${warnings ? `<div class="warning"><strong>Revisá el resultado:</strong><ul>${warnings}</ul></div>` : ""}${data.videoUrl ? `<video controls src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" download="reel.mp4">DESCARGAR MP4</a></p>` : ""}<h4>HOOK</h4><p>${escapeHtml(plan.hook)}</p><h4>GUION</h4><p>${escapeHtml(plan.narration)}</p><h4>CAPTION</h4><p>${escapeHtml(plan.caption)}</p>${sources ? `<h4>FUENTES</h4><ul class="sources">${sources}</ul>` : ""}<p><small>${modeNote}</small></p></div>`;
 }
 
 form.addEventListener("submit", async event => {
