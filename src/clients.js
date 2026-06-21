@@ -97,3 +97,13 @@ export async function download(url, destination) {
   await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination));
   return destination;
 }
+
+export async function createOpenAiSpeech(text, cfg, destination) {
+  const response = await api("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${cfg.openaiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "gpt-4o-mini-tts", voice: "alloy", input: text, response_format: "mp3" })
+  });
+  await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination));
+  return destination;
+}

@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config, assertRealConfig } from "./config.js";
-import { createPlan, createAvatarVideo, findBroll, download } from "./clients.js";
-import { compose, composeLocal, createLocalVoice, durationOf, makeSrt } from "./media.js";
+import { createPlan, createAvatarVideo, createOpenAiSpeech, findBroll, download } from "./clients.js";
+import { compose, composeBrollLocal, composeLocal, createLocalVoice, createSilentAudio, durationOf, makeSrt } from "./media.js";
 
 function demoPlan(trigger) {
   if (/5\s*(?:am|a\.?m\.?)|cinco de la mañana/i.test(trigger)) {
@@ -34,7 +34,13 @@ export async function runPipeline(job, trigger, options, onProgress) {
   const dir = path.resolve("runs", job.id);
   await fs.mkdir(dir, { recursive: true });
   onProgress("script", "Creando el guion y el plan visual");
-  const plan = config.demo ? demoPlan(trigger) : (assertRealConfig(), await createPlan(trigger, config, options));
+  let plan;
+  if (config.demo) {
+    plan = demoPlan(trigger);
+  } else {
+    assertRealConfig();
+    plan = await createPlan(trigger, config, options);
+  }
   await fs.writeFile(path.join(dir, "plan.json"), JSON.stringify(plan, null, 2));
   if (config.demo) {
     onProgress("avatar", "Creando voz local");
@@ -51,10 +57,6 @@ export async function runPipeline(job, trigger, options, onProgress) {
     return { demo: true, plan, videoUrl: `/runs/${job.id}/reel.mp4` };
   }
 
-  onProgress("avatar", "Generando avatar y voz");
-  const avatarUrl = await createAvatarVideo(plan, config);
-  const avatar = await download(avatarUrl, path.join(dir, "avatar.mp4"));
-
   onProgress("broll", "Buscando material visual");
   const broll = [];
   for (let i = 0; i < plan.scenes.length; i++) {
@@ -62,11 +64,40 @@ export async function runPipeline(job, trigger, options, onProgress) {
     if (url) broll.push(await download(url, path.join(dir, `broll-${i}.mp4`)));
   }
 
+  if (config.avatarMode === "local") {
+    onProgress("avatar", "Generando voz para el modo local");
+    const textFile = path.join(dir, "narration.txt");
+    await fs.writeFile(textFile, plan.narration, "utf8");
+    let voice = path.join(dir, "voice.wav");
+    try {
+      await createLocalVoice(textFile, voice);
+    } catch {
+      voice = path.join(dir, "voice.mp3");
+      try {
+        await createOpenAiSpeech(plan.narration, config, voice);
+      } catch {
+        voice = path.join(dir, "voice-silent.wav");
+        const estimatedDuration = Math.max(12, Math.ceil(plan.narration.split(/\s+/).length / 2.5));
+        await createSilentAudio(voice, estimatedDuration, config);
+      }
+    }
+    const duration = await durationOf(voice, config);
+    const srtFile = path.join(dir, "subtitles.srt");
+    await fs.writeFile(srtFile, makeSrt(plan.scenes, duration));
+    const output = path.join(dir, "reel.mp4");
+    onProgress("render", "Montando b-roll, audio y subtítulos");
+    await composeBrollLocal({ voice, broll, subtitles: srtFile, output, duration, music: config.musicFile || null }, config);
+    return { demo: false, avatarMode: "local", plan, videoUrl: `/runs/${job.id}/reel.mp4` };
+  }
+
+  onProgress("avatar", "Generando avatar y voz con HeyGen");
+  const avatarUrl = await createAvatarVideo(plan, config);
+  const avatar = await download(avatarUrl, path.join(dir, "avatar.mp4"));
   onProgress("render", "Agregando cortes, música y subtítulos");
   const duration = await durationOf(avatar, config);
   const srtFile = path.join(dir, "subtitles.srt");
   await fs.writeFile(srtFile, makeSrt(plan.scenes, duration));
   const output = path.join(dir, "reel.mp4");
   await compose({ avatar, broll, subtitles: srtFile, output, duration, music: config.musicFile || null }, config);
-  return { demo: false, plan, videoUrl: `/runs/${job.id}/reel.mp4` };
+  return { demo: false, avatarMode: "heygen", plan, videoUrl: `/runs/${job.id}/reel.mp4` };
 }

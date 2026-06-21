@@ -77,6 +77,49 @@ export async function composeLocal({ voice, subtitles, output, duration }, cfg) 
   ], path.dirname(output));
 }
 
+export async function createSilentAudio(outputFile, duration, cfg) {
+  await run(cfg.ffmpeg, [
+    "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+    "-t", String(duration), "-c:a", "pcm_s16le", outputFile
+  ], path.dirname(outputFile));
+  return outputFile;
+}
+
+export async function composeBrollLocal({ voice, broll, subtitles, output, duration, music }, cfg) {
+  if (!broll.length) return composeLocal({ voice, subtitles, output, duration }, cfg);
+  const inputs = ["-i", voice];
+  for (const file of broll) inputs.push("-stream_loop", "-1", "-i", file);
+  if (music) inputs.push("-stream_loop", "-1", "-i", music);
+
+  const slice = duration / broll.length;
+  const filters = [];
+  const segments = [];
+  broll.forEach((_, index) => {
+    const name = `scene${index}`;
+    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,trim=duration=${slice.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
+    segments.push(`[${name}]`);
+  });
+  filters.push(`${segments.join("")}concat=n=${broll.length}:v=1:a=0[montage]`);
+  const escapedSrt = ffmpegPath(subtitles);
+  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=12,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=25,MarginR=25,MarginV=105'[video]`);
+  filters.push("[0:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000[voice]");
+
+  let audioMap = "[voice]";
+  if (music) {
+    const musicIndex = broll.length + 1;
+    filters.push(`[${musicIndex}:a]volume=0.10[music]`);
+    filters.push("[voice][music]amix=inputs=2:duration=first[audio]");
+    audioMap = "[audio]";
+  }
+
+  await run(cfg.ffmpeg, [
+    "-y", ...inputs, "-filter_complex", filters.join(";"),
+    "-map", "[video]", "-map", audioMap, "-t", String(duration), "-r", "30",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+    "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", output
+  ], path.dirname(output));
+}
+
 export async function compose({ avatar, broll, subtitles, output, duration, music }, cfg) {
   const inputs = ["-i", avatar];
   for (const file of broll) inputs.push("-stream_loop", "-1", "-i", file);

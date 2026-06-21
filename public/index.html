@@ -34,13 +34,14 @@
         <div class="settings-grid">
           <label>OPENAI API KEY<input id="openaiKey" type="password" placeholder="sk-…"></label>
           <label>MODELO OPENAI<input id="openaiModel" value="gpt-4.1-mini"></label>
+          <label>MODO DE AVATAR<select id="avatarMode"><option value="local">Local: OpenAI + Pexels</option><option value="heygen">HeyGen: avatar completo</option></select></label>
           <label>HEYGEN API KEY<input id="heygenKey" type="password" placeholder="Clave de HeyGen"></label>
           <label>HEYGEN AVATAR ID<input id="avatarId" placeholder="avatar_id"></label>
           <label>HEYGEN VOICE ID<input id="voiceId" placeholder="voice_id"></label>
           <label>PEXELS API KEY<input id="pexelsKey" type="password" placeholder="Clave de Pexels"></label>
           <label class="wide">MÚSICA (RUTA OPCIONAL)<input id="musicFile" placeholder="C:\\Musica\\tema.mp3"></label>
         </div>
-        <label class="toggle"><input id="demoMode" type="checkbox"> Mantener modo local sin avatar</label>
+        <label class="toggle"><input id="demoMode" type="checkbox"> Usar demo sin APIs externas</label>
         <div id="settingsState" class="settings-state"></div>
         <button type="submit">GUARDAR CONFIGURACIÓN</button>
       </form>
