@@ -23,6 +23,7 @@ try { saved = JSON.parse(fs.readFileSync(settingsFile, "utf8")); } catch {}
 export const config = {
   port: Number(process.env.PORT || 3000),
   demo: saved.demo ?? process.env.DEMO_MODE !== "false",
+  avatarMode: saved.avatarMode || process.env.AVATAR_MODE || "local",
   openaiKey: saved.openaiKey || process.env.OPENAI_API_KEY || "",
   openaiModel: saved.openaiModel || process.env.OPENAI_MODEL || "gpt-4.1-mini",
   heygenKey: saved.heygenKey || process.env.HEYGEN_API_KEY || "",
@@ -35,21 +36,22 @@ export const config = {
 };
 
 export function publicSettings() {
+  const readyForSelectedMode = missingForRealConfig(config).length === 0;
   return {
-    demo: config.demo, openaiModel: config.openaiModel,
+    demo: config.demo, avatarMode: config.avatarMode, openaiModel: config.openaiModel,
     hasOpenaiKey: Boolean(config.openaiKey), hasHeygenKey: Boolean(config.heygenKey),
     hasPexelsKey: Boolean(config.pexelsKey), avatarId: config.avatarId,
     voiceId: config.voiceId, musicFile: config.musicFile,
-    readyForPro: ![config.openaiKey, config.heygenKey, config.pexelsKey, config.avatarId, config.voiceId].some(x => !x)
+    readyForPro: readyForSelectedMode
   };
 }
 
 export function saveSettings(input) {
-  const fields = ["openaiKey", "openaiModel", "heygenKey", "avatarId", "voiceId", "pexelsKey", "musicFile"];
+  const fields = ["avatarMode", "openaiKey", "openaiModel", "heygenKey", "avatarId", "voiceId", "pexelsKey", "musicFile"];
   for (const field of fields) {
     if (typeof input[field] === "string" && input[field].trim()) config[field] = input[field].trim();
   }
-  const complete = [config.openaiKey, config.heygenKey, config.pexelsKey, config.avatarId, config.voiceId].every(Boolean);
+  const complete = missingForRealConfig(config).length === 0;
   config.demo = input.demo === true || !complete;
   const data = Object.fromEntries(fields.map(field => [field, config[field]]));
   data.demo = config.demo;
@@ -57,12 +59,23 @@ export function saveSettings(input) {
   return publicSettings();
 }
 
-export function assertRealConfig() {
-  const missing = [];
-  for (const [name, value] of [
-    ["OPENAI_API_KEY", config.openaiKey], ["HEYGEN_API_KEY", config.heygenKey],
-    ["HEYGEN_AVATAR_ID", config.avatarId], ["HEYGEN_VOICE_ID", config.voiceId],
-    ["PEXELS_API_KEY", config.pexelsKey]
-  ]) if (!value) missing.push(name);
-  if (missing.length) throw new Error(`Faltan variables: ${missing.join(", ")}`);
+export function missingForRealConfig(input = config) {
+  if (!['local', 'heygen'].includes(input.avatarMode)) {
+    return ["AVATAR_MODE debe ser local o heygen"];
+  }
+  const required = [
+    ["OPENAI_API_KEY", input.openaiKey],
+    ["PEXELS_API_KEY", input.pexelsKey]
+  ];
+  if (input.avatarMode === "heygen") required.push(
+    ["HEYGEN_API_KEY", input.heygenKey],
+    ["HEYGEN_AVATAR_ID", input.avatarId],
+    ["HEYGEN_VOICE_ID", input.voiceId]
+  );
+  return required.filter(([, value]) => !value).map(([name]) => name);
+}
+
+export function assertRealConfig(input = config) {
+  const missing = missingForRealConfig(input);
+  if (missing.length) throw new Error(`Configuración incompleta: ${missing.join(", ")}`);
 }

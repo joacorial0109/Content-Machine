@@ -4,8 +4,9 @@ Aplicación local que convierte una idea, noticia o texto en un reel vertical. E
 
 ## Modos disponibles
 
-- **Demo local:** no consume APIs. Genera un MP4 con voz sintética de Windows, subtítulos y una plantilla visual.
-- **Pro:** usa OpenAI para investigar y escribir, HeyGen para el avatar y la voz, Pexels para el b-roll y FFmpeg para el montaje final.
+- **Demo local:** `DEMO_MODE=true`. No consume APIs. Genera un MP4 con voz sintética de Windows, subtítulos y una plantilla visual.
+- **Real local:** `DEMO_MODE=false` y `AVATAR_MODE=local`. Usa OpenAI para investigar y escribir, Pexels para el b-roll y voz local con respaldo en OpenAI TTS. No requiere HeyGen.
+- **HeyGen:** `DEMO_MODE=false` y `AVATAR_MODE=heygen`. Agrega el avatar y la voz configurados en HeyGen al flujo real.
 
 ## Requisitos
 
@@ -48,14 +49,19 @@ Copiá el archivo de ejemplo:
 Copy-Item .env.example .env
 ```
 
-Variables requeridas para el flujo Pro:
+Variables requeridas para el modo real local:
 
 ```dotenv
 OPENAI_API_KEY=
+PEXELS_API_KEY=
+```
+
+El modo HeyGen requiere además:
+
+```dotenv
 HEYGEN_API_KEY=
 HEYGEN_AVATAR_ID=
 HEYGEN_VOICE_ID=
-PEXELS_API_KEY=
 ```
 
 Configuración completa disponible:
@@ -63,6 +69,7 @@ Configuración completa disponible:
 ```dotenv
 PORT=3000
 DEMO_MODE=true
+AVATAR_MODE=local
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 HEYGEN_API_KEY=
@@ -74,7 +81,7 @@ FFMPEG_PATH=ffmpeg
 FFPROBE_PATH=ffprobe
 ```
 
-Para activar el flujo real, completá las cinco credenciales requeridas y cambiá `DEMO_MODE=false`. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
+`AVATAR_MODE` solo acepta `local` o `heygen`. Para probar OpenAI + Pexels sin HeyGen, usá `DEMO_MODE=false` y `AVATAR_MODE=local`. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
 
 No subas `.env`, `settings.json`, claves, voces, videos generados ni archivos de usuario. Ya están excluidos por `.gitignore`.
 
@@ -105,21 +112,32 @@ El modo demo usa una voz sintética instalada en Windows. Los archivos quedan en
 
 ## 5. Probar el flujo real con APIs externas
 
+### OpenAI + Pexels sin HeyGen
+
+1. Conseguí claves válidas de OpenAI y Pexels.
+2. Configurá `DEMO_MODE=false` y `AVATAR_MODE=local`.
+3. Completá `OPENAI_API_KEY` y `PEXELS_API_KEY`.
+4. Reiniciá el servidor y generá primero un video corto.
+
+Este modo usa voz sintética de Windows cuando está disponible. Si falla, intenta OpenAI TTS. Si ambas opciones fallan, genera una pista silenciosa para que el render no quede bloqueado; esta degradación debe revisarse antes de publicar.
+
+### Flujo completo con HeyGen
+
 1. Creá un avatar y una voz propios o autorizados en HeyGen.
 2. Copiá sus valores `Avatar ID` y `Voice ID`.
-3. Conseguí claves válidas de OpenAI, HeyGen y Pexels.
-4. Completá `.env` y establecé `DEMO_MODE=false`.
-5. Reiniciá el servidor.
-6. Generá primero un video corto para controlar costos y validar las cuentas.
+3. Configurá `DEMO_MODE=false` y `AVATAR_MODE=heygen`.
+4. Completá OpenAI, Pexels y las tres variables de HeyGen.
+5. Reiniciá el servidor y generá primero un video corto para controlar costos.
 
 También podés cargar la configuración desde el botón **Configuración** de la interfaz. Se guarda localmente en `settings.json`, que está ignorado por Git.
 
 El flujo real realiza estas etapas:
 
 1. OpenAI investiga el tema y devuelve hook, narración, escenas, caption y fuentes.
-2. HeyGen genera el presentador con el avatar y la voz configurados.
-3. Pexels busca clips verticales relacionados con cada escena.
-4. FFmpeg monta el avatar y el b-roll, mezcla música, agrega subtítulos y produce el MP4 final.
+2. Pexels busca clips verticales relacionados con cada escena.
+3. En `local`, el sistema genera voz simple y usa el b-roll como imagen principal.
+4. En `heygen`, HeyGen genera el presentador con el avatar y la voz configurados.
+5. FFmpeg monta el video, mezcla música, agrega subtítulos y produce el MP4 final.
 
 ## Comandos
 

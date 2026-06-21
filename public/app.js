@@ -10,13 +10,18 @@ const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({"&":"&amp;"
 function renderSettings(settings) {
   settingsButton.textContent = settings.readyForPro && !settings.demo ? "PRO ACTIVO" : "CONFIGURACIÓN";
   document.querySelector("#openaiModel").value = settings.openaiModel || "gpt-4.1-mini";
+  document.querySelector("#avatarMode").value = settings.avatarMode || "local";
   document.querySelector("#avatarId").value = settings.avatarId || "";
   document.querySelector("#voiceId").value = settings.voiceId || "";
   document.querySelector("#musicFile").value = settings.musicFile || "";
   document.querySelector("#demoMode").checked = settings.demo;
   const state = document.querySelector("#settingsState");
   state.className = `settings-state ${settings.readyForPro ? "ready" : ""}`;
-  state.textContent = settings.readyForPro ? "Configuración completa. Podés activar el modo Pro." : "Faltan claves o identificadores para usar avatar real.";
+  state.textContent = settings.readyForPro
+    ? `Configuración completa para modo ${settings.avatarMode}.`
+    : settings.avatarMode === "local"
+      ? "El modo local real requiere OpenAI y Pexels."
+      : "El modo HeyGen requiere OpenAI, Pexels, API Key, Avatar ID y Voice ID.";
 }
 
 fetch("/api/settings").then(r => r.json()).then(renderSettings);
@@ -26,6 +31,7 @@ document.querySelector("#closeSettings").addEventListener("click", () => setting
 settingsForm.addEventListener("submit", async event => {
   event.preventDefault();
   const payload = {
+    avatarMode: document.querySelector("#avatarMode").value,
     openaiKey: document.querySelector("#openaiKey").value,
     openaiModel: document.querySelector("#openaiModel").value,
     heygenKey: document.querySelector("#heygenKey").value,
@@ -38,8 +44,10 @@ settingsForm.addEventListener("submit", async event => {
   const response = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   const settings = await response.json();
   renderSettings(settings);
-  if (!settings.demo && !settings.readyForPro) {
-    document.querySelector("#settingsState").textContent = "No se puede activar Pro: completá OpenAI, HeyGen, Avatar ID, Voice ID y Pexels.";
+  if (!payload.demo && settings.demo) {
+    document.querySelector("#settingsState").textContent = payload.avatarMode === "local"
+      ? "No se puede activar el modo real local: completá OpenAI y Pexels."
+      : "No se puede activar HeyGen: completá OpenAI, Pexels y las tres variables de HeyGen.";
     return;
   }
   settingsDialog.close();
@@ -52,7 +60,12 @@ function showProgress(message) {
 function showComplete(data) {
   const plan = data.plan;
   const sources = (plan.sources || []).filter(s => /^https?:\/\//.test(s.url)).map(s => `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></li>`).join("");
-  result.innerHTML = `<div class="complete"><h2>Reel listo.</h2>${data.videoUrl ? `<video controls src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" download="reel.mp4">DESCARGAR MP4</a></p>` : ""}<h4>HOOK</h4><p>${escapeHtml(plan.hook)}</p><h4>GUION</h4><p>${escapeHtml(plan.narration)}</p><h4>CAPTION</h4><p>${escapeHtml(plan.caption)}</p>${sources ? `<h4>FUENTES</h4><ul class="sources">${sources}</ul>` : ""}${data.demo ? "<p><small>Video local con voz sintética. Activá Pro para sumar investigación, avatar y b-roll.</small></p>" : ""}</div>`;
+  const modeNote = data.demo
+    ? "Demo local sin APIs externas."
+    : data.avatarMode === "local"
+      ? "Modo real local: guion de OpenAI, b-roll de Pexels y voz local o OpenAI TTS."
+      : "Modo HeyGen con avatar completo.";
+  result.innerHTML = `<div class="complete"><h2>Reel listo.</h2>${data.videoUrl ? `<video controls src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" download="reel.mp4">DESCARGAR MP4</a></p>` : ""}<h4>HOOK</h4><p>${escapeHtml(plan.hook)}</p><h4>GUION</h4><p>${escapeHtml(plan.narration)}</p><h4>CAPTION</h4><p>${escapeHtml(plan.caption)}</p>${sources ? `<h4>FUENTES</h4><ul class="sources">${sources}</ul>` : ""}<p><small>${modeNote}</small></p></div>`;
 }
 
 form.addEventListener("submit", async event => {
