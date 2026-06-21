@@ -1,0 +1,79 @@
+const form = document.querySelector("#form");
+const trigger = document.querySelector("#trigger");
+const result = document.querySelector("#result");
+const button = form.querySelector("button");
+const settingsButton = document.querySelector("#settingsButton");
+const settingsDialog = document.querySelector("#settingsDialog");
+const settingsForm = document.querySelector("#settingsForm");
+const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+
+function renderSettings(settings) {
+  settingsButton.textContent = settings.readyForPro && !settings.demo ? "PRO ACTIVO" : "CONFIGURACIÓN";
+  document.querySelector("#openaiModel").value = settings.openaiModel || "gpt-4.1-mini";
+  document.querySelector("#avatarId").value = settings.avatarId || "";
+  document.querySelector("#voiceId").value = settings.voiceId || "";
+  document.querySelector("#musicFile").value = settings.musicFile || "";
+  document.querySelector("#demoMode").checked = settings.demo;
+  const state = document.querySelector("#settingsState");
+  state.className = `settings-state ${settings.readyForPro ? "ready" : ""}`;
+  state.textContent = settings.readyForPro ? "Configuración completa. Podés activar el modo Pro." : "Faltan claves o identificadores para usar avatar real.";
+}
+
+fetch("/api/settings").then(r => r.json()).then(renderSettings);
+settingsButton.addEventListener("click", () => settingsDialog.showModal());
+document.querySelector("#closeSettings").addEventListener("click", () => settingsDialog.close());
+
+settingsForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const payload = {
+    openaiKey: document.querySelector("#openaiKey").value,
+    openaiModel: document.querySelector("#openaiModel").value,
+    heygenKey: document.querySelector("#heygenKey").value,
+    avatarId: document.querySelector("#avatarId").value,
+    voiceId: document.querySelector("#voiceId").value,
+    pexelsKey: document.querySelector("#pexelsKey").value,
+    musicFile: document.querySelector("#musicFile").value,
+    demo: document.querySelector("#demoMode").checked
+  };
+  const response = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const settings = await response.json();
+  renderSettings(settings);
+  if (!settings.demo && !settings.readyForPro) {
+    document.querySelector("#settingsState").textContent = "No se puede activar Pro: completá OpenAI, HeyGen, Avatar ID, Voice ID y Pexels.";
+    return;
+  }
+  settingsDialog.close();
+});
+
+function showProgress(message) {
+  result.innerHTML = `<div class="progress"><h2>Creando tu reel</h2><div class="bar"><i></i></div><p class="status">${escapeHtml(message)}</p></div>`;
+}
+
+function showComplete(data) {
+  const plan = data.plan;
+  const sources = (plan.sources || []).filter(s => /^https?:\/\//.test(s.url)).map(s => `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.title)}</a></li>`).join("");
+  result.innerHTML = `<div class="complete"><h2>Reel listo.</h2>${data.videoUrl ? `<video controls src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" download="reel.mp4">DESCARGAR MP4</a></p>` : ""}<h4>HOOK</h4><p>${escapeHtml(plan.hook)}</p><h4>GUION</h4><p>${escapeHtml(plan.narration)}</p><h4>CAPTION</h4><p>${escapeHtml(plan.caption)}</p>${sources ? `<h4>FUENTES</h4><ul class="sources">${sources}</ul>` : ""}${data.demo ? "<p><small>Video local con voz sintética. Activá Pro para sumar investigación, avatar y b-roll.</small></p>" : ""}</div>`;
+}
+
+form.addEventListener("submit", async event => {
+  event.preventDefault(); button.disabled = true; showProgress("Investigando y preparando…");
+  try {
+    const payload = {
+      trigger: trigger.value,
+      platform: document.querySelector("#platform").value,
+      tone: document.querySelector("#tone").value,
+      duration: Number(document.querySelector("#duration").value)
+    };
+    const response = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const job = await response.json();
+    if (!response.ok) throw new Error(job.error);
+    const timer = setInterval(async () => {
+      try {
+        const current = await fetch(`/api/jobs/${job.id}`).then(r => r.json());
+        if (current.status === "running") showProgress(current.message);
+        if (current.status === "completed") { clearInterval(timer); button.disabled = false; showComplete(current.result); }
+        if (current.status === "failed") { clearInterval(timer); button.disabled = false; result.innerHTML = `<div class="error"><h2>No se pudo generar</h2><p>${escapeHtml(current.message)}</p></div>`; }
+      } catch (error) { clearInterval(timer); button.disabled = false; result.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`; }
+    }, 1200);
+  } catch (error) { button.disabled = false; result.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`; }
+});

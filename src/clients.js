@@ -11,13 +11,17 @@ async function api(url, options = {}) {
   return response;
 }
 
-export async function createPlan(trigger, cfg) {
+export async function createPlan(trigger, cfg, options = {}) {
   const schema = {
     type: "object", additionalProperties: false,
-    required: ["title", "hook", "narration", "caption", "scenes"],
+    required: ["title", "hook", "narration", "caption", "sources", "scenes"],
     properties: {
       title: { type: "string" }, hook: { type: "string" },
       narration: { type: "string" }, caption: { type: "string" },
+      sources: { type: "array", maxItems: 5, items: {
+        type: "object", additionalProperties: false, required: ["title", "url"],
+        properties: { title: { type: "string" }, url: { type: "string" } }
+      }},
       scenes: { type: "array", minItems: 3, maxItems: 8, items: {
         type: "object", additionalProperties: false,
         required: ["line", "brollQuery"],
@@ -25,16 +29,27 @@ export async function createPlan(trigger, cfg) {
       }}
     }
   };
-  const response = await api("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${cfg.openaiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: cfg.openaiModel,
-      instructions: "Sos guionista de reels. Escribí español rioplatense natural, frases cortas, 35-55 segundos, sin inventar datos no presentes. El hook debe atrapar en 2 segundos. Cada escena necesita una búsqueda visual en inglés de 2-5 palabras.",
-      input: trigger,
-      text: { format: { type: "json_schema", name: "reel_plan", strict: true, schema } }
-    })
-  }).then(r => r.json());
+  const request = {
+    model: cfg.openaiModel,
+    instructions: `Sos investigador y guionista de reels. Investigá primero el tema cuando incluya afirmaciones actuales. Escribí español rioplatense natural, frases cortas, tono ${options.tone || "directo"}, duración ${options.duration || 45} segundos, para ${options.platform || "TikTok e Instagram Reels"}. No inventes datos. El hook debe atrapar en 2 segundos. La narración debe coincidir, en el mismo orden, con la unión de las líneas de todas las escenas. Cada escena necesita una búsqueda visual en inglés de 2-5 palabras. Incluí únicamente URLs de fuentes realmente consultadas.`,
+    input: trigger,
+    tools: [{ type: "web_search_preview", search_context_size: "medium" }],
+    text: { format: { type: "json_schema", name: "reel_plan", strict: true, schema } }
+  };
+  let response;
+  try {
+    response = await api("https://api.openai.com/v1/responses", {
+      method: "POST", headers: { "Authorization": `Bearer ${cfg.openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }).then(r => r.json());
+  } catch (error) {
+    if (!String(error.message).includes("web_search")) throw error;
+    delete request.tools;
+    response = await api("https://api.openai.com/v1/responses", {
+      method: "POST", headers: { "Authorization": `Bearer ${cfg.openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(request)
+    }).then(r => r.json());
+  }
   const text = response.output?.flatMap(x => x.content || []).find(x => x.type === "output_text")?.text;
   if (!text) throw new Error("OpenAI no devolvió un plan utilizable");
   return JSON.parse(text);

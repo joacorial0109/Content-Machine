@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Content Machine</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/pro.css">
+</head>
+<body>
+  <main>
+    <nav><span class="brand"><i></i> CONTENT MACHINE PRO</span><button type="button" id="settingsButton" class="badge">CONFIGURACIÓN</button></nav>
+    <section class="hero">
+      <p class="eyebrow">IDEA → REEL</p>
+      <h1>Una idea.<br><em>Un video entero.</em></h1>
+      <p class="intro">Pegá una noticia, un tweet o una idea. La máquina arma el guion, el avatar, la voz, el material visual y los subtítulos.</p>
+    </section>
+    <section class="workspace">
+      <form id="form">
+        <label for="trigger">DISPARADOR</label>
+        <textarea id="trigger" placeholder="Ej: La inteligencia artificial está cambiando la forma de buscar trabajo…" required></textarea>
+        <div class="options">
+          <label>PLATAFORMA<select id="platform"><option>TikTok e Instagram Reels</option><option>YouTube Shorts</option><option>LinkedIn</option></select></label>
+          <label>TONO<select id="tone"><option value="directo">Directo</option><option value="educativo">Educativo</option><option value="provocador">Provocador</option><option value="cercano">Cercano</option></select></label>
+          <label>DURACIÓN<select id="duration"><option value="30">30 s</option><option value="45" selected>45 s</option><option value="60">60 s</option></select></label>
+        </div>
+        <div class="form-footer"><span>Investigación + avatar + b-roll + subtítulos</span><button>GENERAR REEL <b>↗</b></button></div>
+      </form>
+      <aside id="result">
+        <div class="empty"><span>◎</span><p>Tu reel aparecerá acá</p></div>
+      </aside>
+    </section>
+    <dialog id="settingsDialog">
+      <form id="settingsForm" method="dialog">
+        <header><div><p class="eyebrow">CONFIGURACIÓN LOCAL</p><h2>Activar modo Pro</h2></div><button type="button" id="closeSettings" class="close">×</button></header>
+        <p class="help">Las claves se guardan únicamente en esta computadora. Los campos con una clave ya cargada pueden dejarse vacíos.</p>
+        <div class="settings-grid">
+          <label>OPENAI API KEY<input id="openaiKey" type="password" placeholder="sk-…"></label>
+          <label>MODELO OPENAI<input id="openaiModel" value="gpt-4.1-mini"></label>
+          <label>HEYGEN API KEY<input id="heygenKey" type="password" placeholder="Clave de HeyGen"></label>
+          <label>HEYGEN AVATAR ID<input id="avatarId" placeholder="avatar_id"></label>
+          <label>HEYGEN VOICE ID<input id="voiceId" placeholder="voice_id"></label>
+          <label>PEXELS API KEY<input id="pexelsKey" type="password" placeholder="Clave de Pexels"></label>
+          <label class="wide">MÚSICA (RUTA OPCIONAL)<input id="musicFile" placeholder="C:\\Musica\\tema.mp3"></label>
+        </div>
+        <label class="toggle"><input id="demoMode" type="checkbox"> Mantener modo local sin avatar</label>
+        <div id="settingsState" class="settings-state"></div>
+        <button type="submit">GUARDAR CONFIGURACIÓN</button>
+      </form>
+    </dialog>
+    <section class="steps">
+      <article><b>01</b><h3>GUION</h3><p>Hook, narración y escenas.</p></article>
+      <article><b>02</b><h3>AVATAR + VOZ</h3><p>Tu doble digital presenta.</p></article>
+      <article><b>03</b><h3>B-ROLL</h3><p>Imágenes para cada punto.</p></article>
+      <article><b>04</b><h3>RENDER</h3><p>Música, cortes y subtítulos.</p></article>
+    </section>
+  </main><script src="/app.js"></script>
+</body></html>
