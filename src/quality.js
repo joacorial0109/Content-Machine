@@ -4,8 +4,20 @@ export function estimateNarrationDuration(text, wordsPerSecond = 2.35) {
 }
 
 export function planNeedsExpansion(plan, minDuration, minScenes = 5) {
+  return planQualityIssues(plan, minDuration, minScenes).length > 0;
+}
+
+export function planQualityIssues(plan, minDuration, minScenes = 5) {
   const scenes = Array.isArray(plan?.scenes) ? plan.scenes : [];
-  return scenes.length < minScenes || scenes.length > 8 || estimateNarrationDuration(plan?.narration) < minDuration;
+  const issues = [];
+  if (scenes.length < minScenes || scenes.length > 8) issues.push(`se requieren entre ${minScenes} y 8 escenas`);
+  if (estimateNarrationDuration(plan?.narration) < minDuration) issues.push(`la narración dura menos de ${minDuration} segundos`);
+  scenes.forEach((scene, index) => {
+    const overlayWords = String(scene.overlayText || "").trim().split(/\s+/).filter(Boolean).length;
+    if (overlayWords < 2 || overlayWords > 6) issues.push(`overlay inválido en escena ${index + 1}`);
+    if (!Array.isArray(scene.subtitleChunks) || !scene.subtitleChunks.length) issues.push(`faltan subtítulos semánticos en escena ${index + 1}`);
+  });
+  return issues;
 }
 
 export function normalizeSceneDurations(scenes, targetDuration) {
@@ -70,4 +82,52 @@ export function buildCutTimeline(scenes, duration, cutSeconds = 4) {
     cursor += segmentDuration;
   }
   return timeline;
+}
+
+export function minimumRequiredBroll(sceneCount) {
+  return Math.min(3, Math.max(1, Number(sceneCount) || 1));
+}
+
+export function selectVisualMode({ demo, avatarMode, brollDownloadedCount, requiredBrollCount = 1 }) {
+  if (demo) return "demo-plate";
+  if (avatarMode === "local") {
+    if (brollDownloadedCount < requiredBrollCount) throw new Error("No se encontraron clips de Pexels suficientes");
+    return "pexels-broll";
+  }
+  return "heygen-avatar";
+}
+
+export function buildRunReport({
+  finalDurationSeconds = 0,
+  targetDurationSeconds,
+  minDurationSeconds,
+  sceneCount,
+  brollDownloadedCount,
+  brollUsedCount,
+  clipsUsed = [],
+  visualMode,
+  usedFallback = false,
+  warnings = [],
+  errors = []
+}) {
+  return {
+    finalDurationSeconds,
+    targetDurationSeconds,
+    minDurationSeconds,
+    sceneCount,
+    brollDownloadedCount,
+    brollUsedCount,
+    clipsUsed,
+    visualMode,
+    usedFallback,
+    warnings,
+    errors,
+    durationMinimumPass: finalDurationSeconds >= minDurationSeconds
+  };
+}
+
+export function assertMinimumDuration(report) {
+  if (!report.durationMinimumPass) {
+    throw new Error(`El video final dura ${report.finalDurationSeconds.toFixed(1)}s; el mínimo es ${report.minDurationSeconds}s`);
+  }
 }

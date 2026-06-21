@@ -11,14 +11,17 @@ export function secondsToSrt(value) {
 }
 
 export function makeSrt(scenes, duration) {
-  const chunks = scenes.flatMap(scene => {
-    const words = scene.line.trim().split(/\s+/);
-    const parts = [];
-    for (let i = 0; i < words.length; i += 6) parts.push({ line: words.slice(i, i + 6).join(" ") });
-    return parts;
+  const chunks = scenes.flatMap((scene, sceneIndex) => {
+    const semantic = Array.isArray(scene.subtitleChunks) && scene.subtitleChunks.length
+      ? scene.subtitleChunks
+      : balancedSubtitleChunks(scene.line);
+    return semantic.map(line => ({ line, sceneIndex, sceneWeight: Number(scene.estimatedDuration) || 1 }));
   });
-  const weights = chunks.map(s => Math.max(1, s.line.split(/\s+/).length));
-  const total = weights.reduce((a, b) => a + b, 0);
+  const sceneWeightTotals = scenes.reduce((sum, scene) => sum + (Number(scene.estimatedDuration) || 1), 0) || 1;
+  const sceneChunkCounts = new Map();
+  chunks.forEach(chunk => sceneChunkCounts.set(chunk.sceneIndex, (sceneChunkCounts.get(chunk.sceneIndex) || 0) + 1));
+  const weights = chunks.map(chunk => chunk.sceneWeight / (sceneChunkCounts.get(chunk.sceneIndex) || 1));
+  const total = weights.reduce((a, b) => a + b, 0) || sceneWeightTotals;
   let cursor = 0;
   return chunks.map((scene, i) => {
     const end = i === chunks.length - 1 ? duration : cursor + duration * weights[i] / total;
@@ -26,6 +29,19 @@ export function makeSrt(scenes, duration) {
     cursor = end;
     return block;
   }).join("\n");
+}
+
+export function balancedSubtitleChunks(text, maxWords = 7) {
+  const clauses = String(text || "").split(/(?<=[.!?;:,])\s+/).map(value => value.trim()).filter(Boolean);
+  return clauses.flatMap(clause => {
+    const words = clause.split(/\s+/);
+    if (words.length <= maxWords) return [clause];
+    const count = Math.ceil(words.length / maxWords);
+    const size = Math.ceil(words.length / count);
+    const result = [];
+    for (let index = 0; index < words.length; index += size) result.push(words.slice(index, index + size).join(" "));
+    return result;
+  });
 }
 
 export function makeSceneOverlaySrt(scenes, duration) {
@@ -111,8 +127,8 @@ export async function fitAudioDuration(inputFile, outputFile, inputDuration, tar
   return outputFile;
 }
 
-export async function composeBrollLocal({ voice, timeline, subtitles, overlays, output, duration, music }, cfg) {
-  if (!timeline.length) return composeLocal({ voice, subtitles, output, duration }, cfg);
+export async function composeReelWithBroll({ voice, timeline, subtitles, overlays, output, duration, music }, cfg) {
+  if (!timeline.length) throw new Error("No se encontraron clips de Pexels suficientes");
   const inputs = ["-i", voice];
   for (const segment of timeline) inputs.push("-stream_loop", "-1", "-i", segment.file);
   if (music) inputs.push("-stream_loop", "-1", "-i", music);

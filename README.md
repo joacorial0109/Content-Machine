@@ -123,7 +123,11 @@ El modo demo usa una voz sintética instalada en Windows. Los archivos quedan en
 
 Este modo usa voz sintética de Windows cuando está disponible. Si falla, intenta OpenAI TTS. Si ambas opciones fallan, genera una pista silenciosa para que el render no quede bloqueado; esta degradación debe revisarse antes de publicar.
 
-El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos y duración estimada. El montaje corta cada 3 a 5 segundos, aplica movimiento suave a los clips y repite material cuando hace falta para alcanzar la duración objetivo. Cada ejecución guarda `report.json` con duración final, escenas, clips descargados y usados, fallbacks, warnings y errores.
+El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos, subtítulos semánticos y duración estimada. El montaje corta cada 3 a 5 segundos, aplica movimiento suave a los clips y repite material cuando hace falta para alcanzar la duración objetivo.
+
+El modo real local exige al menos tres clips descargados de Pexels. Si no los consigue después de probar queries alternativas, el job falla con `No se encontraron clips de Pexels suficientes`; nunca vuelve a la placa del demo. Después del render, FFprobe confirma que `finalDurationSeconds` sea mayor o igual a `MIN_DURATION_SECONDS`. Un video más corto se marca como fallido.
+
+Cada ejecución guarda `report.json` con `finalDurationSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`.
 
 ### Flujo completo con HeyGen
 

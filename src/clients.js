@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
-import { normalizeSceneDurations, planNeedsExpansion } from "./quality.js";
+import { normalizeSceneDurations, planNeedsExpansion, planQualityIssues } from "./quality.js";
 
 async function api(url, options = {}) {
   const response = await fetch(url, options);
@@ -26,9 +26,10 @@ export async function createPlan(trigger, cfg, options = {}) {
       }},
       scenes: { type: "array", minItems: 5, maxItems: 8, items: {
         type: "object", additionalProperties: false,
-        required: ["line", "brollQuery", "brollAlternatives", "overlayText", "estimatedDuration"],
+        required: ["line", "subtitleChunks", "brollQuery", "brollAlternatives", "overlayText", "estimatedDuration"],
         properties: {
           line: { type: "string" },
+          subtitleChunks: { type: "array", minItems: 1, maxItems: 4, items: { type: "string" } },
           brollQuery: { type: "string" },
           brollAlternatives: { type: "array", minItems: 2, maxItems: 3, items: { type: "string" } },
           overlayText: { type: "string" },
@@ -39,7 +40,7 @@ export async function createPlan(trigger, cfg, options = {}) {
   };
   const request = {
     model: cfg.openaiModel,
-    instructions: `Sos investigador, guionista y editor de reels. Investigá primero el tema cuando incluya afirmaciones actuales. Escribí español rioplatense natural, tono ${options.tone || "directo"}, para ${options.platform || "TikTok e Instagram Reels"}. El video debe durar aproximadamente ${targetDuration} segundos y nunca menos de ${cfg.minDuration} segundos. Creá entre 5 y 8 escenas. La narración debe coincidir exactamente, en el mismo orden, con la unión de line de todas las escenas y debe tener suficientes palabras para la duración pedida. Cada escena necesita: texto narrado, duración estimada, una búsqueda visual específica en inglés, 2 alternativas más genéricas y un overlayText de 2 a 6 palabras. No inventes datos. El hook debe atrapar en 2 segundos. Incluí únicamente URLs realmente consultadas.`,
+    instructions: `Sos investigador, guionista y editor de reels. Investigá primero el tema cuando incluya afirmaciones actuales. Escribí español rioplatense natural, tono ${options.tone || "directo"}, para ${options.platform || "TikTok e Instagram Reels"}. El video debe durar aproximadamente ${targetDuration} segundos y nunca menos de ${cfg.minDuration} segundos. Creá entre 5 y 8 escenas. La narración debe coincidir exactamente, en el mismo orden, con la unión de line de todas las escenas y debe tener suficientes palabras para la duración pedida. Cada escena necesita: texto narrado, duración estimada, 1 a 4 subtitleChunks que sean frases completas y naturales, una búsqueda visual específica en inglés, 2 alternativas más genéricas y un overlayText de 2 a 6 palabras que resuma una idea clave. Nunca cortes subtítulos en fragmentos sin sentido. No inventes datos. El hook debe atrapar en 2 segundos. Incluí únicamente URLs realmente consultadas.`,
     input: trigger,
     tools: [{ type: "web_search_preview", search_context_size: "medium" }],
     text: { format: { type: "json_schema", name: "reel_plan", strict: true, schema } }
@@ -68,13 +69,14 @@ export async function createPlan(trigger, cfg, options = {}) {
   };
 
   let plan = parse(await execute());
-  if (planNeedsExpansion(plan, cfg.minDuration)) {
-    request.input = `La primera versión quedó demasiado corta. Reescribí el reel sobre este disparador con 5 a 8 escenas y narración suficiente para ${targetDuration} segundos: ${trigger}`;
+  for (let attempt = 1; attempt <= 3 && planNeedsExpansion(plan, cfg.minDuration); attempt++) {
+    const issues = planQualityIssues(plan, cfg.minDuration).join("; ");
+    request.input = `La versión anterior no cumple: ${issues}. Reescribí el reel completo sobre este disparador con 5 a 8 escenas, subtítulos semánticos y narración suficiente para ${targetDuration} segundos: ${trigger}`;
     delete request.tools;
     plan = parse(await execute());
   }
   if (planNeedsExpansion(plan, cfg.minDuration)) {
-    throw new Error(`OpenAI no produjo un guion de al menos ${cfg.minDuration} segundos y 5 escenas`);
+    throw new Error(`OpenAI no produjo un plan válido: ${planQualityIssues(plan, cfg.minDuration).join("; ")}`);
   }
   plan.scenes = normalizeSceneDurations(plan.scenes, targetDuration);
   plan.narration = plan.scenes.map(scene => scene.line).join(" ");

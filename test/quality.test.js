@@ -2,15 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyBrollFallbacks,
+  assertMinimumDuration,
+  buildRunReport,
   buildCutTimeline,
+  minimumRequiredBroll,
   normalizeSceneDurations,
   planNeedsExpansion,
-  resolveVideoDuration
+  resolveVideoDuration,
+  selectVisualMode
 } from "../src/quality.js";
 
 const scenes = Array.from({ length: 5 }, (_, index) => ({
   line: `Texto narrado para la escena ${index + 1}`,
+  subtitleChunks: [`Texto completo de la escena ${index + 1}`],
   brollQuery: `query ${index + 1}`,
+  overlayText: `Idea clave ${index + 1}`,
   estimatedDuration: 7
 }));
 
@@ -48,4 +54,53 @@ test("el modo local no vuelve a placa si existe al menos un b-roll", () => {
   assert.ok(timeline.every(segment => segment.file === "clip.mp4"));
   assert.ok(timeline.every(segment => segment.duration <= 4));
   assert.ok(timeline.every(segment => segment.duration >= 3));
+});
+
+test("modo real local selecciona exclusivamente el renderer de Pexels", () => {
+  assert.equal(selectVisualMode({
+    demo: false,
+    avatarMode: "local",
+    brollDownloadedCount: 3,
+    requiredBrollCount: minimumRequiredBroll(5)
+  }), "pexels-broll");
+});
+
+test("modo real local falla cuando Pexels no trae clips suficientes", () => {
+  assert.throws(() => selectVisualMode({
+    demo: false,
+    avatarMode: "local",
+    brollDownloadedCount: 0,
+    requiredBrollCount: minimumRequiredBroll(5)
+  }), /No se encontraron clips de Pexels suficientes/);
+});
+
+test("reporte falla si la duración final queda debajo del mínimo", () => {
+  const report = buildRunReport({
+    finalDurationSeconds: 17,
+    targetDurationSeconds: 35,
+    minDurationSeconds: 25,
+    sceneCount: 5,
+    brollDownloadedCount: 3,
+    brollUsedCount: 3,
+    visualMode: "pexels-broll"
+  });
+  assert.equal(report.durationMinimumPass, false);
+  assert.throws(() => assertMinimumDuration(report), /el mínimo es 25s/);
+});
+
+test("reporte registra duración y cantidad de b-roll descargado", () => {
+  const report = buildRunReport({
+    finalDurationSeconds: 35,
+    targetDurationSeconds: 35,
+    minDurationSeconds: 25,
+    sceneCount: 6,
+    brollDownloadedCount: 4,
+    brollUsedCount: 4,
+    visualMode: "pexels-broll",
+    usedFallback: true,
+    warnings: ["fallback"]
+  });
+  assert.equal(report.finalDurationSeconds, 35);
+  assert.equal(report.brollDownloadedCount, 4);
+  assert.equal(report.durationMinimumPass, true);
 });
