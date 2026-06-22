@@ -34,4 +34,5 @@ test("template crea entre cinco y ocho escenas sin OpenAI", () => {
   assert.ok(plan.scenes.length >= 5 && plan.scenes.length <= 8);
   assert.ok(estimateNarrationDuration(plan.narration) >= 25);
   assert.ok(plan.scenes.every(scene => scene.brollQuery && scene.overlayText));
+  assert.ok(plan.scenes.every(scene => scene.overlayText.split(/\s+/).length <= 4));
 });

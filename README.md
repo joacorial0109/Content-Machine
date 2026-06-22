@@ -170,11 +170,13 @@ El plan debe contener entre 5 y 8 escenas y narración suficiente para `MIN_DURA
 
 Configurá `GENERATION_MODE=template` y escribí una idea en el disparador. El servidor crea seis escenas locales, queries genéricas para Pexels, overlays, subtítulos y caption. No llama a OpenAI.
 
-El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos, subtítulos semánticos y duración estimada. El montaje corta cada 3 a 5 segundos, aplica movimiento suave a los clips y repite material cuando hace falta para alcanzar la duración objetivo.
+El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos, subtítulos semánticos y duración estimada. El montaje usa cortes de 2,5 a 4 segundos, aplica movimiento suave y consume todos los clips únicos antes de repetir uno con otro crop/zoom.
+
+En `manual` y `template`, la voz se ajusta a `TARGET_DURATION_SECONDS` sin permitir que el resultado baje de `MIN_DURATION_SECONDS`. Los overlays muestran hasta 4 palabras durante los primeros 2,5 segundos de cada escena; los subtítulos usan hasta 6 palabras por bloque y mantienen margen seguro en la parte inferior.
 
 El modo real local exige al menos tres clips descargados de Pexels. Si no los consigue después de probar queries alternativas, el job falla con `No se encontraron clips de Pexels suficientes`; nunca vuelve a la placa del demo. Después del render, FFprobe confirma que `finalDurationSeconds` sea mayor o igual a `MIN_DURATION_SECONDS`. Un video más corto se marca como fallido.
 
-Cada ejecución guarda `report.json` con `finalDurationSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`.
+Cada ejecución guarda `report.json` con `requestedDurationSeconds`, `finalDurationSeconds`, `durationDeltaSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `repeatedClipCount`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`. Si el resultado supera la duración pedida por más de 5 segundos, agrega un warning al reporte y a la interfaz.
 
 ### Flujo completo con HeyGen
 
