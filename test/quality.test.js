@@ -153,3 +153,21 @@ test("reporte avisa cuando supera el target por más de cinco segundos", () => {
   assert.equal(report.durationDeltaSeconds, 10.5);
   assert.match(report.warnings.join(" "), /supera la duración objetivo/);
 });
+
+test("reporte registra voz y validación de superposición", () => {
+  const report = buildRunReport({
+    requestedDurationSeconds: 35,
+    finalDurationSeconds: 35,
+    minDurationSeconds: 25,
+    voiceMode: "file",
+    voiceFileUsed: "narracion.mp3",
+    audioDurationSeconds: 35,
+    subtitlePosition: "bottom-safe",
+    overlayPosition: "top-safe",
+    overlapCheckPassed: true
+  });
+  assert.equal(report.voiceMode, "file");
+  assert.equal(report.voiceFileUsed, "narracion.mp3");
+  assert.equal(report.audioDurationSeconds, 35);
+  assert.equal(report.overlapCheckPassed, true);
+});

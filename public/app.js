@@ -5,6 +5,7 @@ const button = form.querySelector("button");
 const settingsButton = document.querySelector("#settingsButton");
 const settingsDialog = document.querySelector("#settingsDialog");
 const settingsForm = document.querySelector("#settingsForm");
+let currentVoiceMode = "windows";
 const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 
 function updateManualVisibility(mode) {
@@ -14,16 +15,25 @@ function updateManualVisibility(mode) {
   trigger.required = mode !== "manual";
 }
 
+function updateVoiceVisibility(mode) {
+  currentVoiceMode = mode;
+  document.querySelector("#voiceFileSection").hidden = mode !== "file";
+}
+
 function renderSettings(settings) {
   settingsButton.textContent = settings.readyForPro && !settings.demo ? "PRO ACTIVO" : "CONFIGURACIÓN";
   document.querySelector("#openaiModel").value = settings.openaiModel || "gpt-4.1-mini";
   document.querySelector("#generationMode").value = settings.generationMode || "ai";
   document.querySelector("#avatarMode").value = settings.avatarMode || "local";
+  document.querySelector("#voiceMode").value = settings.voiceMode || "windows";
+  document.querySelector("#voiceFile").value = settings.voiceFile || "";
+  document.querySelector("#voiceFilePath").value = settings.voiceFile || "";
   document.querySelector("#avatarId").value = settings.avatarId || "";
   document.querySelector("#voiceId").value = settings.voiceId || "";
   document.querySelector("#musicFile").value = settings.musicFile || "";
   document.querySelector("#demoMode").checked = settings.demo;
   updateManualVisibility(settings.generationMode || "ai");
+  updateVoiceVisibility(settings.voiceMode || "windows");
   const state = document.querySelector("#settingsState");
   state.className = `settings-state ${settings.readyForPro ? "ready" : ""}`;
   state.textContent = settings.readyForPro
@@ -37,12 +47,15 @@ fetch("/api/settings").then(r => r.json()).then(renderSettings);
 settingsButton.addEventListener("click", () => settingsDialog.showModal());
 document.querySelector("#closeSettings").addEventListener("click", () => settingsDialog.close());
 document.querySelector("#generationMode").addEventListener("change", event => updateManualVisibility(event.target.value));
+document.querySelector("#voiceMode").addEventListener("change", event => updateVoiceVisibility(event.target.value));
 
 settingsForm.addEventListener("submit", async event => {
   event.preventDefault();
   const payload = {
     avatarMode: document.querySelector("#avatarMode").value,
     generationMode: document.querySelector("#generationMode").value,
+    voiceMode: document.querySelector("#voiceMode").value,
+    voiceFile: document.querySelector("#voiceFile").value,
     openaiKey: document.querySelector("#openaiKey").value,
     openaiModel: document.querySelector("#openaiModel").value,
     heygenKey: document.querySelector("#heygenKey").value,
@@ -75,9 +88,9 @@ function showComplete(data) {
   const modeNote = data.demo
     ? "Demo local sin APIs externas."
     : data.generationMode === "manual"
-      ? "Modo manual: plan del usuario, Pexels y voz local."
+      ? `Modo manual: plan del usuario, Pexels y ${data.voiceMode === "file" ? "audio propio" : "voz Windows"}.`
       : data.generationMode === "template"
-        ? "Modo template: plan local gratuito, Pexels y voz local."
+        ? `Modo template: plan local gratuito, Pexels y ${data.voiceMode === "file" ? "audio propio" : "voz Windows"}.`
         : data.avatarMode === "local"
           ? "Modo AI local: OpenAI, Pexels y voz local o OpenAI TTS."
           : "Modo AI con avatar completo de HeyGen.";
@@ -87,12 +100,29 @@ function showComplete(data) {
 form.addEventListener("submit", async event => {
   event.preventDefault(); button.disabled = true; showProgress("Preparando el plan y el material visual…");
   try {
+    let voiceFile = document.querySelector("#voiceFilePath").value.trim();
+    let voiceFileName = voiceFile ? voiceFile.split(/[\\/]/).pop() : "";
+    const selectedAudio = document.querySelector("#voiceUpload").files[0];
+    if (currentVoiceMode === "file" && selectedAudio) {
+      showProgress("Cargando el archivo de voz…");
+      const uploadResponse = await fetch("/api/uploads/audio", {
+        method: "POST",
+        headers: { "X-File-Name": encodeURIComponent(selectedAudio.name) },
+        body: selectedAudio
+      });
+      const uploaded = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(uploaded.error);
+      voiceFile = uploaded.path;
+      voiceFileName = uploaded.name;
+    }
     const payload = {
       trigger: trigger.value,
       platform: document.querySelector("#platform").value,
       tone: document.querySelector("#tone").value,
       duration: Number(document.querySelector("#duration").value),
-      manualPlan: document.querySelector("#manualPlan").value
+      manualPlan: document.querySelector("#manualPlan").value,
+      voiceFile,
+      voiceFileName
     };
     const response = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const job = await response.json();

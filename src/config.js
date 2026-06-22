@@ -25,6 +25,8 @@ export const config = {
   demo: saved.demo ?? process.env.DEMO_MODE !== "false",
   avatarMode: saved.avatarMode || process.env.AVATAR_MODE || "local",
   generationMode: saved.generationMode || process.env.GENERATION_MODE || "ai",
+  voiceMode: saved.voiceMode || process.env.VOICE_MODE || "windows",
+  voiceFile: saved.voiceFile || process.env.VOICE_FILE || "",
   targetDuration: Math.max(1, Number(process.env.TARGET_DURATION_SECONDS) || 35),
   minDuration: Math.max(1, Number(process.env.MIN_DURATION_SECONDS) || 25),
   openaiKey: saved.openaiKey || process.env.OPENAI_API_KEY || "",
@@ -41,7 +43,8 @@ export const config = {
 export function publicSettings() {
   const readyForSelectedMode = missingForRealConfig(config).length === 0;
   return {
-    demo: config.demo, avatarMode: config.avatarMode, generationMode: config.generationMode, openaiModel: config.openaiModel,
+    demo: config.demo, avatarMode: config.avatarMode, generationMode: config.generationMode,
+    voiceMode: config.voiceMode, voiceFile: config.voiceFile, openaiModel: config.openaiModel,
     targetDuration: config.targetDuration, minDuration: config.minDuration,
     hasOpenaiKey: Boolean(config.openaiKey), hasHeygenKey: Boolean(config.heygenKey),
     hasPexelsKey: Boolean(config.pexelsKey), avatarId: config.avatarId,
@@ -51,7 +54,7 @@ export function publicSettings() {
 }
 
 export function saveSettings(input) {
-  const fields = ["avatarMode", "generationMode", "openaiKey", "openaiModel", "heygenKey", "avatarId", "voiceId", "pexelsKey", "musicFile"];
+  const fields = ["avatarMode", "generationMode", "voiceMode", "voiceFile", "openaiKey", "openaiModel", "heygenKey", "avatarId", "voiceId", "pexelsKey", "musicFile"];
   for (const field of fields) {
     if (typeof input[field] === "string" && input[field].trim()) config[field] = input[field].trim();
   }
@@ -69,6 +72,9 @@ export function missingForRealConfig(input = config) {
   }
   if (!["ai", "manual", "template"].includes(input.generationMode)) {
     return ["GENERATION_MODE debe ser ai, manual o template"];
+  }
+  if (!["windows", "file"].includes(input.voiceMode || "windows")) {
+    return ["VOICE_MODE debe ser windows o file"];
   }
   if (["manual", "template"].includes(input.generationMode) && input.avatarMode !== "local") {
     return ["AVATAR_MODE debe ser local cuando GENERATION_MODE es manual o template"];
