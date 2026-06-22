@@ -87,6 +87,12 @@ test("modo real local selecciona exclusivamente el renderer de Pexels", () => {
   }), "pexels-broll");
 });
 
+test("modo sin avatar mantiene renderer de Pexels", () => {
+  assert.equal(selectVisualMode({
+    demo: false, avatarMode: "none", brollDownloadedCount: 3, requiredBrollCount: 3
+  }), "pexels-broll");
+});
+
 test("manual y template no seleccionan composeLocal en modo real", () => {
   for (const generationMode of ["manual", "template"]) {
     const visualMode = selectVisualMode({
@@ -152,4 +158,26 @@ test("reporte avisa cuando supera el target por más de cinco segundos", () => {
   assert.equal(report.requestedDurationSeconds, 35);
   assert.equal(report.durationDeltaSeconds, 10.5);
   assert.match(report.warnings.join(" "), /supera la duración objetivo/);
+});
+
+test("reporte registra voz y validación de superposición", () => {
+  const report = buildRunReport({
+    requestedDurationSeconds: 35,
+    finalDurationSeconds: 35,
+    minDurationSeconds: 25,
+    voiceMode: "file",
+    voiceFileUsed: "narracion.mp3",
+    audioDurationSeconds: 35,
+    subtitlePosition: "bottom-safe",
+    overlayPosition: "top-safe",
+    overlapCheckPassed: true,
+    avatarMode: "local",
+    avatarSafeAreaCheckPassed: true
+  });
+  assert.equal(report.voiceMode, "file");
+  assert.equal(report.voiceFileUsed, "narracion.mp3");
+  assert.equal(report.audioDurationSeconds, 35);
+  assert.equal(report.overlapCheckPassed, true);
+  assert.equal(report.avatarMode, "local");
+  assert.equal(report.avatarSafeAreaCheckPassed, true);
 });

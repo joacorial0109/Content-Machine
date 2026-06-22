@@ -106,11 +106,8 @@ export function minimumRequiredBroll(sceneCount) {
 
 export function selectVisualMode({ demo, avatarMode, brollDownloadedCount, requiredBrollCount = 1 }) {
   if (demo) return "demo-plate";
-  if (avatarMode === "local") {
-    if (brollDownloadedCount < requiredBrollCount) throw new Error("No se encontraron clips de Pexels suficientes");
-    return "pexels-broll";
-  }
-  return "heygen-avatar";
+  if (brollDownloadedCount < requiredBrollCount) throw new Error("No se encontraron clips de Pexels suficientes");
+  return avatarMode === "heygen" ? "pexels-broll+heygen" : "pexels-broll";
 }
 
 export function buildRunReport({
@@ -123,6 +120,22 @@ export function buildRunReport({
   brollUsedCount,
   clipsUsed = [],
   repeatedClipCount,
+  brollClipCount,
+  voiceMode,
+  voiceFileUsed = null,
+  audioDurationSeconds = 0,
+  subtitlePosition = "bottom-safe",
+  overlayPosition = "top-safe",
+  overlapCheckPassed = subtitlePosition !== overlayPosition,
+  audioSourceType,
+  audioWarning = null,
+  avatarMode = "none",
+  avatarFileUsed = null,
+  avatarProvider = "none",
+  avatarPosition = null,
+  avatarDurationSeconds = 0,
+  avatarWarning = null,
+  avatarSafeAreaCheckPassed = true,
   generationMode,
   visualMode,
   usedFallback = false,
@@ -147,6 +160,22 @@ export function buildRunReport({
     brollUsedCount,
     clipsUsed,
     repeatedClipCount: repeatedClipCount ?? clipsUsed.filter(clip => clip.repeated).length,
+    brollClipCount: brollClipCount ?? brollUsedCount,
+    voiceMode,
+    voiceFileUsed,
+    audioDurationSeconds,
+    subtitlePosition,
+    overlayPosition,
+    overlapCheckPassed,
+    audioSourceType,
+    audioWarning,
+    avatarMode,
+    avatarFileUsed,
+    avatarProvider,
+    avatarPosition,
+    avatarDurationSeconds,
+    avatarWarning,
+    avatarSafeAreaCheckPassed,
     generationMode,
     visualMode,
     usedFallback,

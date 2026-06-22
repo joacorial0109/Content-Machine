@@ -19,12 +19,19 @@ loadEnv();
 const settingsFile = path.resolve("settings.json");
 let saved = {};
 try { saved = JSON.parse(fs.readFileSync(settingsFile, "utf8")); } catch {}
+const savedAvatarMode = saved.avatarMode === "local" && !saved.localAvatarFile ? "none" : saved.avatarMode;
 
 export const config = {
   port: Number(process.env.PORT || 3000),
   demo: saved.demo ?? process.env.DEMO_MODE !== "false",
-  avatarMode: saved.avatarMode || process.env.AVATAR_MODE || "local",
+  avatarMode: savedAvatarMode || process.env.AVATAR_MODE || "none",
+  avatarUsage: saved.avatarUsage || process.env.AVATAR_USAGE || "strategic",
+  localAvatarFile: saved.localAvatarFile || process.env.LOCAL_AVATAR_FILE || "",
+  localAvatarPosition: saved.localAvatarPosition || process.env.LOCAL_AVATAR_POSITION || "bottom-right",
+  localAvatarSize: saved.localAvatarSize || process.env.LOCAL_AVATAR_SIZE || "medium",
   generationMode: saved.generationMode || process.env.GENERATION_MODE || "ai",
+  voiceMode: saved.voiceMode || process.env.VOICE_MODE || "windows",
+  voiceFile: saved.voiceFile || process.env.VOICE_FILE || "",
   targetDuration: Math.max(1, Number(process.env.TARGET_DURATION_SECONDS) || 35),
   minDuration: Math.max(1, Number(process.env.MIN_DURATION_SECONDS) || 25),
   openaiKey: saved.openaiKey || process.env.OPENAI_API_KEY || "",
@@ -41,7 +48,10 @@ export const config = {
 export function publicSettings() {
   const readyForSelectedMode = missingForRealConfig(config).length === 0;
   return {
-    demo: config.demo, avatarMode: config.avatarMode, generationMode: config.generationMode, openaiModel: config.openaiModel,
+    demo: config.demo, avatarMode: config.avatarMode, avatarUsage: config.avatarUsage,
+    localAvatarFile: config.localAvatarFile, localAvatarPosition: config.localAvatarPosition,
+    localAvatarSize: config.localAvatarSize, generationMode: config.generationMode,
+    voiceMode: config.voiceMode, voiceFile: config.voiceFile, openaiModel: config.openaiModel,
     targetDuration: config.targetDuration, minDuration: config.minDuration,
     hasOpenaiKey: Boolean(config.openaiKey), hasHeygenKey: Boolean(config.heygenKey),
     hasPexelsKey: Boolean(config.pexelsKey), avatarId: config.avatarId,
@@ -51,7 +61,7 @@ export function publicSettings() {
 }
 
 export function saveSettings(input) {
-  const fields = ["avatarMode", "generationMode", "openaiKey", "openaiModel", "heygenKey", "avatarId", "voiceId", "pexelsKey", "musicFile"];
+  const fields = ["avatarMode", "avatarUsage", "localAvatarFile", "localAvatarPosition", "localAvatarSize", "generationMode", "voiceMode", "voiceFile", "openaiKey", "openaiModel", "heygenKey", "avatarId", "voiceId", "pexelsKey", "musicFile"];
   for (const field of fields) {
     if (typeof input[field] === "string" && input[field].trim()) config[field] = input[field].trim();
   }
@@ -64,14 +74,20 @@ export function saveSettings(input) {
 }
 
 export function missingForRealConfig(input = config) {
-  if (!['local', 'heygen'].includes(input.avatarMode)) {
-    return ["AVATAR_MODE debe ser local o heygen"];
+  if (!["none", "local", "heygen"].includes(input.avatarMode || "none")) {
+    return ["AVATAR_MODE debe ser none, local o heygen"];
   }
   if (!["ai", "manual", "template"].includes(input.generationMode)) {
     return ["GENERATION_MODE debe ser ai, manual o template"];
   }
-  if (["manual", "template"].includes(input.generationMode) && input.avatarMode !== "local") {
-    return ["AVATAR_MODE debe ser local cuando GENERATION_MODE es manual o template"];
+  if (!["windows", "file", "heygen"].includes(input.voiceMode || "windows")) {
+    return ["VOICE_MODE debe ser windows, file o heygen"];
+  }
+  if (!["none", "intro", "outro", "full", "strategic"].includes(input.avatarUsage || "strategic")) {
+    return ["AVATAR_USAGE debe ser none, intro, outro, full o strategic"];
+  }
+  if ((input.voiceMode === "heygen") !== (input.avatarMode === "heygen")) {
+    return ["VOICE_MODE y AVATAR_MODE deben ser heygen al mismo tiempo"];
   }
   const required = [
     ["PEXELS_API_KEY", input.pexelsKey]

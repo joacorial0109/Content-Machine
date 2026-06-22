@@ -1,6 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { avatarRenderSpec } from "./avatar.js";
+
+export const TEXT_LAYOUT = Object.freeze({
+  subtitle: Object.freeze({ zone: "bottom-safe", alignment: 2, marginV: 28 }),
+  overlay: Object.freeze({ zone: "top-safe", alignment: 8, marginV: 18 })
+});
+
+export function validateTextLayout(layout = TEXT_LAYOUT) {
+  const subtitleBottom = layout.subtitle?.zone === "bottom-safe" && layout.subtitle?.alignment === 2;
+  const overlayTop = layout.overlay?.zone === "top-safe" && layout.overlay?.alignment === 8;
+  return subtitleBottom && overlayTop && layout.subtitle.zone !== layout.overlay.zone;
+}
 
 export function secondsToSrt(value) {
   const ms = Math.max(0, Math.round(value * 1000));
@@ -129,36 +141,51 @@ export async function fitAudioDuration(inputFile, outputFile, inputDuration, tar
   return outputFile;
 }
 
-export async function composeReelWithBroll({ voice, timeline, subtitles, overlays, output, duration, music }, cfg) {
+export async function composeReelWithBroll({ voice, timeline, subtitles, overlays, output, duration, music, avatar = null, visualStyle = "dynamic" }, cfg) {
   if (!timeline.length) throw new Error("No se encontraron clips de Pexels suficientes");
+  if (!validateTextLayout()) throw new Error("La configuración de texto permite superposición");
   const inputs = ["-i", voice];
   for (const segment of timeline) inputs.push("-stream_loop", "-1", "-i", segment.file);
+  if (avatar) inputs.push(avatar.type === "image" ? "-loop" : "-stream_loop", avatar.type === "image" ? "1" : "-1", "-i", avatar.file);
   if (music) inputs.push("-stream_loop", "-1", "-i", music);
 
   const filters = [];
   const segments = [];
+  const style = {
+    clean: { zoom: 0.00022, maxZoom: 1.035 },
+    dynamic: { zoom: 0.00045, maxZoom: 1.06 },
+    business: { zoom: 0.00030, maxZoom: 1.045 }
+  }[visualStyle] || { zoom: 0.00045, maxZoom: 1.06 };
   timeline.forEach((segment, index) => {
     const name = `scene${index}`;
     const variants = [
-      { zoom: "0.00035", x: "iw/2-(iw/zoom/2)", y: "ih/2-(ih/zoom/2)" },
-      { zoom: "0.00050", x: "0", y: "ih/2-(ih/zoom/2)" },
-      { zoom: "0.00045", x: "iw-(iw/zoom)", y: "ih/2-(ih/zoom/2)" },
-      { zoom: "0.00030", x: "iw/2-(iw/zoom/2)", y: "ih-(ih/zoom)" }
+      { zoom: style.zoom, x: "iw/2-(iw/zoom/2)", y: "ih/2-(ih/zoom/2)" },
+      { zoom: style.zoom * 1.12, x: "0", y: "ih/2-(ih/zoom/2)" },
+      { zoom: style.zoom, x: "iw-(iw/zoom)", y: "ih/2-(ih/zoom/2)" },
+      { zoom: style.zoom * 0.85, x: "iw/2-(iw/zoom/2)", y: "ih-(ih/zoom)" }
     ];
     const variant = variants[Number(segment.cropVariant) % variants.length] || variants[0];
-    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+${variant.zoom},1.06)':x='${variant.x}':y='${variant.y}':d=1:s=1080x1920:fps=30,trim=duration=${segment.duration.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
+    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+${variant.zoom.toFixed(6)},${style.maxZoom})':x='${variant.x}':y='${variant.y}':d=1:s=1080x1920:fps=30,trim=duration=${segment.duration.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
     segments.push(`[${name}]`);
   });
   filters.push(`${segments.join("")}concat=n=${timeline.length}:v=1:a=0[montage]`);
+  let visualBase = "montage";
+  if (avatar) {
+    const avatarIndex = timeline.length + 1;
+    const spec = avatarRenderSpec(avatar, duration);
+    filters.push(`[${avatarIndex}:v]scale=${spec.width}:${spec.width}:force_original_aspect_ratio=decrease,pad=${spec.width}:${spec.width}:(ow-iw)/2:(oh-ih)/2:color=white,setsar=1,trim=duration=${duration},setpts=PTS-STARTPTS[avatarpip]`);
+    filters.push(`[montage][avatarpip]overlay=x='${spec.x}':y='${spec.y}':enable='${spec.enable}'[withavatar]`);
+    visualBase = "withavatar";
+  }
   const escapedSrt = ffmpegPath(subtitles);
   const escapedOverlays = ffmpegPath(overlays);
-  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=55,MarginR=55,MarginV=150'[captioned]`);
-  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=8,MarginL=70,MarginR=70,MarginV=175'[video]`);
+  filters.push(`[${visualBase}]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=${TEXT_LAYOUT.subtitle.alignment},MarginL=55,MarginR=55,MarginV=${TEXT_LAYOUT.subtitle.marginV}'[captioned]`);
+  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=${TEXT_LAYOUT.overlay.alignment},MarginL=70,MarginR=70,MarginV=${TEXT_LAYOUT.overlay.marginV}'[video]`);
   filters.push("[0:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000[voice]");
 
   let audioMap = "[voice]";
   if (music) {
-    const musicIndex = timeline.length + 1;
+    const musicIndex = timeline.length + 1 + (avatar ? 1 : 0);
     filters.push(`[${musicIndex}:a]volume=0.10[music]`);
     filters.push("[voice][music]amix=inputs=2:duration=first[audio]");
     audioMap = "[audio]";

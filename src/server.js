@@ -5,11 +5,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { config, publicSettings, saveSettings } from "./config.js";
 import { runPipeline } from "./pipeline.js";
+import { saveAudioUpload, saveAvatarUpload } from "./uploads.js";
 
 const publicDir = path.resolve("public");
 const runsDir = path.resolve("runs");
+const uploadsDir = path.resolve("uploads");
 const jobs = new Map();
-const types = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mp4": "video/mp4", ".json": "application/json" };
+const types = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".json": "application/json" };
 
 function json(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -48,17 +50,35 @@ const server = http.createServer(async (req, res) => {
       const data = await body(req);
       return json(res, 200, saveSettings(data));
     }
+    if (req.method === "POST" && url.pathname === "/api/uploads/audio") {
+      return json(res, 201, await saveAudioUpload(req, uploadsDir));
+    }
+    if (req.method === "POST" && url.pathname === "/api/uploads/avatar") {
+      return json(res, 201, await saveAvatarUpload(req, uploadsDir));
+    }
     if (req.method === "POST" && url.pathname === "/api/jobs") {
       const data = await body(req);
       const trigger = String(data.trigger || "").trim();
-      if (config.generationMode !== "manual" && trigger.length < 10) return json(res, 400, { error: "Escribí una idea, noticia o texto de al menos 10 caracteres." });
+      const generationMode = String(data.generationMode || config.generationMode);
+      if (generationMode !== "manual" && trigger.length < 10) return json(res, 400, { error: "Escribí una idea, noticia o texto de al menos 10 caracteres." });
       const job = { id: crypto.randomUUID(), status: "running", stage: "queued", message: "Preparando", createdAt: new Date().toISOString() };
       jobs.set(job.id, job);
       const options = {
         platform: String(data.platform || "TikTok e Instagram Reels").slice(0, 60),
         tone: String(data.tone || "directo").slice(0, 40),
         duration: Math.min(90, Math.max(config.minDuration, Number(data.duration) || config.targetDuration)),
-        manualPlan: String(data.manualPlan || "").slice(0, 90_000)
+        manualPlan: String(data.manualPlan || "").slice(0, 90_000),
+        voiceFile: String(data.voiceFile || "").slice(0, 2_000),
+        voiceFileName: path.basename(String(data.voiceFileName || "")).slice(0, 255),
+        generationMode,
+        voiceMode: String(data.voiceMode || config.voiceMode).slice(0, 20),
+        avatarMode: String(data.avatarMode || config.avatarMode).slice(0, 20),
+        avatarUsage: String(data.avatarUsage || config.avatarUsage).slice(0, 20),
+        avatarFile: String(data.avatarFile || "").slice(0, 2_000),
+        avatarFileName: path.basename(String(data.avatarFileName || "")).slice(0, 255),
+        localAvatarPosition: String(data.localAvatarPosition || config.localAvatarPosition).slice(0, 30),
+        localAvatarSize: String(data.localAvatarSize || config.localAvatarSize).slice(0, 20),
+        visualStyle: String(data.visualStyle || "dynamic").slice(0, 20)
       };
       runPipeline(job, trigger, options, (stage, message) => Object.assign(job, { stage, message }))
         .then(result => Object.assign(job, { status: "completed", stage: "done", message: "Listo", result }))

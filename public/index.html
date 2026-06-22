@@ -14,6 +14,17 @@
     </section>
     <section class="workspace">
       <form id="form">
+        <fieldset class="video-config">
+          <legend>CONFIGURACIÓN DEL VIDEO</legend>
+          <div class="config-grid">
+            <label>MODO DE GENERACIÓN<select id="videoGenerationMode"><option value="manual">Manual</option><option value="template">Template</option><option value="ai">AI (requiere OpenAI)</option></select><small>Manual pega tu plan; Template crea uno local; AI investiga con OpenAI.</small></label>
+            <label>VOZ<select id="videoVoiceMode"><option value="windows">Voz Windows</option><option value="file">Archivo de audio propio</option><option value="heygen">HeyGen (pro)</option></select><small id="voiceHelp">Voz Windows: rápida y gratis, pero puede sonar robótica.</small></label>
+            <label>AVATAR<select id="videoAvatarMode"><option value="none">Sin avatar</option><option value="local">Avatar local</option><option value="heygen">HeyGen (pro)</option></select><small id="avatarHelp">Sin avatar: solo b-roll.</small></label>
+            <label>DURACIÓN<select id="duration"><option value="30">30 s</option><option value="35" selected>35 s</option><option value="45">45 s</option><option value="custom">Personalizada</option></select><input id="customDuration" type="number" min="25" max="90" value="35" hidden></label>
+            <label>ESTILO VISUAL<select id="visualStyle"><option value="clean">Limpio</option><option value="dynamic" selected>Dinámico</option><option value="business">Educativo / negocio</option></select><small>Controla ritmo de cortes y movimiento.</small></label>
+            <label>USO DEL AVATAR<select id="avatarUsage"><option value="none">No mostrar</option><option value="intro">Solo intro</option><option value="outro">Solo cierre</option><option value="full">Todo el reel</option><option value="strategic" selected>Momentos estratégicos</option></select></label>
+          </div>
+        </fieldset>
         <label for="trigger">DISPARADOR</label>
         <textarea id="trigger" placeholder="Ej: La inteligencia artificial está cambiando la forma de buscar trabajo…" required></textarea>
         <div id="manualPlanSection" hidden>
@@ -21,10 +32,27 @@
           <textarea id="manualPlan" spellcheck="false" placeholder='{"title":"Título","hook":"Hook","narration":"Narración completa","caption":"Caption #hashtags","scenes":[{"line":"Texto narrado de la escena","brollQuery":"morning routine","overlayText":"Idea clave"}]}'></textarea>
           <p class="field-help">Incluí entre 5 y 8 escenas. Cada escena necesita line, brollQuery y overlayText.</p>
         </div>
+        <div id="voiceFileSection" class="voice-file-section" hidden>
+          <label for="voiceUpload">ARCHIVO DE VOZ PROPIO</label>
+          <input id="voiceUpload" type="file" accept="audio/mpeg,audio/wav,audio/mp4,.mp3,.wav,.m4a">
+          <label for="voiceFilePath">O RUTA LOCAL DEL AUDIO</label>
+          <input id="voiceFilePath" placeholder="C:\Audio\narracion.mp3">
+          <p class="field-help">Si querés una voz más natural gratis, podés grabarla vos o generar un audio externo y cargarlo acá.</p>
+        </div>
+        <div id="avatarFileSection" class="voice-file-section" hidden>
+          <label for="avatarUpload">IMAGEN O VIDEO DE AVATAR</label>
+          <input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm">
+          <label for="avatarFilePath">O RUTA LOCAL DEL AVATAR</label>
+          <input id="avatarFilePath" placeholder="C:\Assets\avatar.png">
+          <div class="config-grid compact">
+            <label>POSICIÓN<select id="localAvatarPosition"><option value="bottom-right">Abajo derecha</option><option value="bottom-left">Abajo izquierda</option><option value="center">Centro</option></select></label>
+            <label>TAMAÑO<select id="localAvatarSize"><option value="small">Pequeño</option><option value="medium" selected>Mediano</option><option value="large">Grande</option></select></label>
+          </div>
+          <p class="field-help">Avatar local: imagen o video propio sobre el reel, sin sincronización labial obligatoria.</p>
+        </div>
         <div class="options">
           <label>PLATAFORMA<select id="platform"><option>TikTok e Instagram Reels</option><option>YouTube Shorts</option><option>LinkedIn</option></select></label>
           <label>TONO<select id="tone"><option value="directo">Directo</option><option value="educativo">Educativo</option><option value="provocador">Provocador</option><option value="cercano">Cercano</option></select></label>
-          <label>DURACIÓN<select id="duration"><option value="35" selected>35 s</option><option value="45">45 s</option><option value="60">60 s</option></select></label>
         </div>
         <div class="form-footer"><span>Investigación + avatar + b-roll + subtítulos</span><button>GENERAR REEL <b>↗</b></button></div>
       </form>
@@ -40,7 +68,11 @@
           <label>OPENAI API KEY<input id="openaiKey" type="password" placeholder="sk-…"></label>
           <label>MODELO OPENAI<input id="openaiModel" value="gpt-4.1-mini"></label>
           <label>MODO DE GENERACIÓN<select id="generationMode"><option value="ai">AI: OpenAI</option><option value="manual">Manual: pegar plan</option><option value="template">Template: gratis local</option></select></label>
-          <label>MODO DE AVATAR<select id="avatarMode"><option value="local">Local: voz Windows + Pexels</option><option value="heygen">HeyGen: avatar completo</option></select></label>
+          <label>MODO DE AVATAR<select id="avatarMode"><option value="none">Sin avatar</option><option value="local">Avatar local</option><option value="heygen">HeyGen: avatar pro</option></select></label>
+          <label>MODO DE VOZ<select id="voiceMode"><option value="windows">Voz Windows</option><option value="file">Archivo de audio propio</option><option value="heygen">HeyGen (pro)</option></select></label>
+          <label>ARCHIVO DE VOZ (RUTA)<input id="voiceFile" placeholder="C:\Audio\narracion.mp3"></label>
+          <label>AVATAR LOCAL (RUTA)<input id="localAvatarFile" placeholder="C:\Assets\avatar.png"></label>
+          <label>USO DEL AVATAR<select id="settingsAvatarUsage"><option value="none">No mostrar</option><option value="intro">Intro</option><option value="outro">Cierre</option><option value="full">Completo</option><option value="strategic">Estratégico</option></select></label>
           <label>HEYGEN API KEY<input id="heygenKey" type="password" placeholder="Clave de HeyGen"></label>
           <label>HEYGEN AVATAR ID<input id="avatarId" placeholder="avatar_id"></label>
           <label>HEYGEN VOICE ID<input id="voiceId" placeholder="voice_id"></label>
