@@ -51,13 +51,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/jobs") {
       const data = await body(req);
       const trigger = String(data.trigger || "").trim();
-      if (trigger.length < 10) return json(res, 400, { error: "Escribí una idea, noticia o texto de al menos 10 caracteres." });
+      if (config.generationMode !== "manual" && trigger.length < 10) return json(res, 400, { error: "Escribí una idea, noticia o texto de al menos 10 caracteres." });
       const job = { id: crypto.randomUUID(), status: "running", stage: "queued", message: "Preparando", createdAt: new Date().toISOString() };
       jobs.set(job.id, job);
       const options = {
         platform: String(data.platform || "TikTok e Instagram Reels").slice(0, 60),
         tone: String(data.tone || "directo").slice(0, 40),
-        duration: Math.min(90, Math.max(config.minDuration, Number(data.duration) || config.targetDuration))
+        duration: Math.min(90, Math.max(config.minDuration, Number(data.duration) || config.targetDuration)),
+        manualPlan: String(data.manualPlan || "").slice(0, 90_000)
       };
       runPipeline(job, trigger, options, (stage, message) => Object.assign(job, { stage, message }))
         .then(result => Object.assign(job, { status: "completed", stage: "done", message: "Listo", result }))

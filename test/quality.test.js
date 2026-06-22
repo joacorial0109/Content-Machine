@@ -65,6 +65,18 @@ test("modo real local selecciona exclusivamente el renderer de Pexels", () => {
   }), "pexels-broll");
 });
 
+test("manual y template no seleccionan composeLocal en modo real", () => {
+  for (const generationMode of ["manual", "template"]) {
+    const visualMode = selectVisualMode({
+      demo: false,
+      avatarMode: "local",
+      brollDownloadedCount: 3,
+      requiredBrollCount: 3
+    });
+    assert.equal(visualMode, "pexels-broll", generationMode);
+  }
+});
+
 test("modo real local falla cuando Pexels no trae clips suficientes", () => {
   assert.throws(() => selectVisualMode({
     demo: false,
@@ -97,10 +109,12 @@ test("reporte registra duración y cantidad de b-roll descargado", () => {
     brollDownloadedCount: 4,
     brollUsedCount: 4,
     visualMode: "pexels-broll",
+    generationMode: "template",
     usedFallback: true,
     warnings: ["fallback"]
   });
   assert.equal(report.finalDurationSeconds, 35);
   assert.equal(report.brollDownloadedCount, 4);
+  assert.equal(report.generationMode, "template");
   assert.equal(report.durationMinimumPass, true);
 });

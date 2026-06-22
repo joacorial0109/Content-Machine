@@ -7,31 +7,42 @@ const settingsDialog = document.querySelector("#settingsDialog");
 const settingsForm = document.querySelector("#settingsForm");
 const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 
+function updateManualVisibility(mode) {
+  const section = document.querySelector("#manualPlanSection");
+  section.hidden = mode !== "manual";
+  document.querySelector("#manualPlan").required = mode === "manual";
+  trigger.required = mode !== "manual";
+}
+
 function renderSettings(settings) {
   settingsButton.textContent = settings.readyForPro && !settings.demo ? "PRO ACTIVO" : "CONFIGURACIÓN";
   document.querySelector("#openaiModel").value = settings.openaiModel || "gpt-4.1-mini";
+  document.querySelector("#generationMode").value = settings.generationMode || "ai";
   document.querySelector("#avatarMode").value = settings.avatarMode || "local";
   document.querySelector("#avatarId").value = settings.avatarId || "";
   document.querySelector("#voiceId").value = settings.voiceId || "";
   document.querySelector("#musicFile").value = settings.musicFile || "";
   document.querySelector("#demoMode").checked = settings.demo;
+  updateManualVisibility(settings.generationMode || "ai");
   const state = document.querySelector("#settingsState");
   state.className = `settings-state ${settings.readyForPro ? "ready" : ""}`;
   state.textContent = settings.readyForPro
-    ? `Configuración completa para modo ${settings.avatarMode}.`
-    : settings.avatarMode === "local"
-      ? "El modo local real requiere OpenAI y Pexels."
-      : "El modo HeyGen requiere OpenAI, Pexels, API Key, Avatar ID y Voice ID.";
+    ? `Configuración completa: generación ${settings.generationMode}, avatar ${settings.avatarMode}.`
+    : settings.generationMode === "ai"
+      ? "El modo AI requiere OpenAI y Pexels."
+      : "Manual y template requieren Pexels y AVATAR_MODE=local; no necesitan OpenAI.";
 }
 
 fetch("/api/settings").then(r => r.json()).then(renderSettings);
 settingsButton.addEventListener("click", () => settingsDialog.showModal());
 document.querySelector("#closeSettings").addEventListener("click", () => settingsDialog.close());
+document.querySelector("#generationMode").addEventListener("change", event => updateManualVisibility(event.target.value));
 
 settingsForm.addEventListener("submit", async event => {
   event.preventDefault();
   const payload = {
     avatarMode: document.querySelector("#avatarMode").value,
+    generationMode: document.querySelector("#generationMode").value,
     openaiKey: document.querySelector("#openaiKey").value,
     openaiModel: document.querySelector("#openaiModel").value,
     heygenKey: document.querySelector("#heygenKey").value,
@@ -45,9 +56,9 @@ settingsForm.addEventListener("submit", async event => {
   const settings = await response.json();
   renderSettings(settings);
   if (!payload.demo && settings.demo) {
-    document.querySelector("#settingsState").textContent = payload.avatarMode === "local"
-      ? "No se puede activar el modo real local: completá OpenAI y Pexels."
-      : "No se puede activar HeyGen: completá OpenAI, Pexels y las tres variables de HeyGen.";
+    document.querySelector("#settingsState").textContent = payload.generationMode === "ai"
+      ? "No se puede activar AI: completá OpenAI y Pexels."
+      : "No se puede activar el modo gratis: elegí avatar local y completá Pexels.";
     return;
   }
   settingsDialog.close();
@@ -63,20 +74,25 @@ function showComplete(data) {
   const warnings = (data.warnings || []).map(message => `<li>${escapeHtml(message)}</li>`).join("");
   const modeNote = data.demo
     ? "Demo local sin APIs externas."
-    : data.avatarMode === "local"
-      ? "Modo real local: guion de OpenAI, b-roll de Pexels y voz local o OpenAI TTS."
-      : "Modo HeyGen con avatar completo.";
+    : data.generationMode === "manual"
+      ? "Modo manual: plan del usuario, Pexels y voz local."
+      : data.generationMode === "template"
+        ? "Modo template: plan local gratuito, Pexels y voz local."
+        : data.avatarMode === "local"
+          ? "Modo AI local: OpenAI, Pexels y voz local o OpenAI TTS."
+          : "Modo AI con avatar completo de HeyGen.";
   result.innerHTML = `<div class="complete"><h2>Reel listo.</h2>${warnings ? `<div class="warning"><strong>Revisá el resultado:</strong><ul>${warnings}</ul></div>` : ""}${data.videoUrl ? `<video controls src="${data.videoUrl}"></video><p><a href="${data.videoUrl}" download="reel.mp4">DESCARGAR MP4</a></p>` : ""}<h4>HOOK</h4><p>${escapeHtml(plan.hook)}</p><h4>GUION</h4><p>${escapeHtml(plan.narration)}</p><h4>CAPTION</h4><p>${escapeHtml(plan.caption)}</p>${sources ? `<h4>FUENTES</h4><ul class="sources">${sources}</ul>` : ""}<p><small>${modeNote}</small></p></div>`;
 }
 
 form.addEventListener("submit", async event => {
-  event.preventDefault(); button.disabled = true; showProgress("Investigando y preparando…");
+  event.preventDefault(); button.disabled = true; showProgress("Preparando el plan y el material visual…");
   try {
     const payload = {
       trigger: trigger.value,
       platform: document.querySelector("#platform").value,
       tone: document.querySelector("#tone").value,
-      duration: Number(document.querySelector("#duration").value)
+      duration: Number(document.querySelector("#duration").value),
+      manualPlan: document.querySelector("#manualPlan").value
     };
     const response = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const job = await response.json();

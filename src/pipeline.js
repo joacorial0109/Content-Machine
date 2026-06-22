@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config, assertRealConfig } from "./config.js";
 import { createPlan, createAvatarVideo, createOpenAiSpeech, findBroll, download } from "./clients.js";
+import { createTemplatePlan, parseManualPlan } from "./generation.js";
 import { compose, composeLocal, composeReelWithBroll, createLocalVoice, createSilentAudio, durationOf, fitAudioDuration, makeSceneOverlaySrt, makeSrt } from "./media.js";
 import { applyBrollFallbacks, assertMinimumDuration, buildBrollQueries, buildCutTimeline, buildRunReport, minimumRequiredBroll, resolveVideoDuration, selectVisualMode } from "./quality.js";
 
@@ -76,9 +77,15 @@ export async function runPipeline(job, trigger, options, onProgress) {
   let plan;
   if (config.demo) {
     plan = demoPlan(trigger);
-  } else {
+  } else if (config.generationMode === "ai") {
     assertRealConfig();
     plan = await createPlan(trigger, config, options);
+  } else if (config.generationMode === "manual") {
+    assertRealConfig();
+    plan = parseManualPlan(options.manualPlan, options.duration || config.targetDuration, config.minDuration);
+  } else {
+    assertRealConfig();
+    plan = createTemplatePlan(trigger, options.duration || config.targetDuration, config.minDuration);
   }
   await fs.writeFile(path.join(dir, "plan.json"), JSON.stringify(plan, null, 2));
   if (config.demo) {
@@ -120,6 +127,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
         sceneCount: plan.scenes.length,
         brollDownloadedCount: brollResult.downloadedCount,
         brollUsedCount: 0,
+        generationMode: config.generationMode,
         visualMode: "none",
         usedFallback: true,
         warnings: brollResult.warnings,
@@ -140,7 +148,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
       voice = null;
     }
     const warnings = [...brollResult.warnings];
-    if (!voice || voiceDuration < Math.max(config.minDuration, targetDuration * 0.85)) {
+    if (config.openaiKey && (!voice || voiceDuration < Math.max(config.minDuration, targetDuration * 0.85))) {
       const openAiVoice = path.join(dir, "voice-openai.mp3");
       try {
         await createOpenAiSpeech(plan.narration, config, openAiVoice);
@@ -175,6 +183,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
       brollDownloadedCount: brollResult.downloadedCount,
       brollUsedCount: new Set(timeline.map(segment => segment.file)).size,
       clipsUsed,
+      generationMode: config.generationMode,
       visualMode,
       usedFallback: brollResult.fallbackUsed,
       warnings,
@@ -191,7 +200,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
       throw error;
     }
     await fs.writeFile(reportFile, JSON.stringify(report, null, 2));
-    return { demo: false, avatarMode: "local", plan, warnings, report, videoUrl: `/runs/${job.id}/reel.mp4` };
+    return { demo: false, avatarMode: "local", generationMode: config.generationMode, plan, warnings, report, videoUrl: `/runs/${job.id}/reel.mp4` };
   }
 
   onProgress("avatar", "Generando avatar y voz con HeyGen");
@@ -204,5 +213,5 @@ export async function runPipeline(job, trigger, options, onProgress) {
   const output = path.join(dir, "reel.mp4");
   const broll = plan.scenes.map(scene => scene.broll?.file).filter(Boolean);
   await compose({ avatar, broll, subtitles: srtFile, output, duration, music: config.musicFile || null }, config);
-  return { demo: false, avatarMode: "heygen", plan, videoUrl: `/runs/${job.id}/reel.mp4` };
+  return { demo: false, avatarMode: "heygen", generationMode: config.generationMode, plan, videoUrl: `/runs/${job.id}/reel.mp4` };
 }
