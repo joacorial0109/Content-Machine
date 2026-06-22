@@ -2,6 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+export const TEXT_LAYOUT = Object.freeze({
+  subtitle: Object.freeze({ zone: "bottom-safe", alignment: 2, marginV: 28 }),
+  overlay: Object.freeze({ zone: "top-safe", alignment: 8, marginV: 18 })
+});
+
+export function validateTextLayout(layout = TEXT_LAYOUT) {
+  const subtitleBottom = layout.subtitle?.zone === "bottom-safe" && layout.subtitle?.alignment === 2;
+  const overlayTop = layout.overlay?.zone === "top-safe" && layout.overlay?.alignment === 8;
+  return subtitleBottom && overlayTop && layout.subtitle.zone !== layout.overlay.zone;
+}
+
 export function secondsToSrt(value) {
   const ms = Math.max(0, Math.round(value * 1000));
   const h = String(Math.floor(ms / 3600000)).padStart(2, "0");
@@ -131,6 +142,7 @@ export async function fitAudioDuration(inputFile, outputFile, inputDuration, tar
 
 export async function composeReelWithBroll({ voice, timeline, subtitles, overlays, output, duration, music }, cfg) {
   if (!timeline.length) throw new Error("No se encontraron clips de Pexels suficientes");
+  if (!validateTextLayout()) throw new Error("La configuración de texto permite superposición");
   const inputs = ["-i", voice];
   for (const segment of timeline) inputs.push("-stream_loop", "-1", "-i", segment.file);
   if (music) inputs.push("-stream_loop", "-1", "-i", music);
@@ -152,8 +164,8 @@ export async function composeReelWithBroll({ voice, timeline, subtitles, overlay
   filters.push(`${segments.join("")}concat=n=${timeline.length}:v=1:a=0[montage]`);
   const escapedSrt = ffmpegPath(subtitles);
   const escapedOverlays = ffmpegPath(overlays);
-  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=55,MarginR=55,MarginV=150'[captioned]`);
-  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=8,MarginL=70,MarginR=70,MarginV=175'[video]`);
+  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=${TEXT_LAYOUT.subtitle.alignment},MarginL=55,MarginR=55,MarginV=${TEXT_LAYOUT.subtitle.marginV}'[captioned]`);
+  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=${TEXT_LAYOUT.overlay.alignment},MarginL=70,MarginR=70,MarginV=${TEXT_LAYOUT.overlay.marginV}'[video]`);
   filters.push("[0:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000[voice]");
 
   let audioMap = "[voice]";

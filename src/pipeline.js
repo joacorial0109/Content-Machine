@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config, assertRealConfig } from "./config.js";
-import { createPlan, createAvatarVideo, createOpenAiSpeech, findBrollCandidates, download } from "./clients.js";
+import { createPlan, createAvatarVideo, findBrollCandidates, download } from "./clients.js";
 import { createTemplatePlan, parseManualPlan } from "./generation.js";
-import { compose, composeLocal, composeReelWithBroll, createLocalVoice, createSilentAudio, durationOf, fitAudioDuration, makeSceneOverlaySrt, makeSrt } from "./media.js";
+import { compose, composeLocal, composeReelWithBroll, createLocalVoice, createSilentAudio, durationOf, fitAudioDuration, makeSceneOverlaySrt, makeSrt, TEXT_LAYOUT, validateTextLayout } from "./media.js";
 import { applyBrollFallbacks, assertMinimumDuration, buildBrollQueries, buildCutTimeline, buildRunReport, minimumRequiredBroll, resolveVideoDuration, selectVisualMode } from "./quality.js";
+import { normalizeVoiceMode, resolveVoiceFile } from "./voice.js";
 
 function demoPlan(trigger) {
   if (/5\s*(?:am|a\.?m\.?)|cinco de la mañana/i.test(trigger)) {
@@ -149,6 +150,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
         sceneCount: plan.scenes.length,
         brollDownloadedCount: brollResult.downloadedCount,
         brollUsedCount: 0,
+        voiceMode: config.voiceMode,
         generationMode: config.generationMode,
         visualMode: "none",
         usedFallback: true,
@@ -158,40 +160,40 @@ export async function runPipeline(job, trigger, options, onProgress) {
       await fs.writeFile(reportFile, JSON.stringify(failedReport, null, 2));
       throw error;
     }
-    onProgress("avatar", "Generando voz para el modo local");
+    const voiceMode = normalizeVoiceMode(config.voiceMode);
+    onProgress("avatar", voiceMode === "file" ? "Preparando archivo de voz" : "Generando voz de Windows");
     const textFile = path.join(dir, "narration.txt");
     await fs.writeFile(textFile, plan.narration, "utf8");
-    let voice = path.join(dir, "voice-local.wav");
+    let voice = null;
     let voiceDuration = 0;
-    try {
-      await createLocalVoice(textFile, voice);
+    let voiceFileUsed = null;
+    if (voiceMode === "file") {
+      voice = await resolveVoiceFile(options.voiceFile || config.voiceFile);
       voiceDuration = await durationOf(voice, config);
-    } catch {
-      voice = null;
-    }
-    const warnings = [...brollResult.warnings];
-    if (config.openaiKey && (!voice || voiceDuration < Math.max(config.minDuration, targetDuration * 0.85))) {
-      const openAiVoice = path.join(dir, "voice-openai.mp3");
+      voiceFileUsed = options.voiceFileName || path.basename(voice);
+    } else {
+      voice = path.join(dir, "voice-local.wav");
       try {
-        await createOpenAiSpeech(plan.narration, config, openAiVoice);
-        voice = openAiVoice;
+        await createLocalVoice(textFile, voice);
         voiceDuration = await durationOf(voice, config);
-        warnings.push("Se usó OpenAI TTS porque la voz local no alcanzó la duración objetivo");
-      } catch (error) {
-        warnings.push(`OpenAI TTS no disponible: ${error.message}`);
+      } catch {
+        voice = null;
       }
     }
+    const warnings = [...brollResult.warnings];
     if (!voice) {
       voice = path.join(dir, "voice-silent.wav");
       await createSilentAudio(voice, targetDuration, config);
       voiceDuration = targetDuration;
       warnings.push("Se usó audio silencioso de respaldo");
     }
-    const preferTarget = ["manual", "template"].includes(config.generationMode);
+    const preferTarget = voiceMode === "windows" && ["manual", "template"].includes(config.generationMode);
     if (preferTarget && voiceDuration > targetDuration + 5) {
       warnings.push(`La narración original duraba ${voiceDuration.toFixed(1)}s y se ajustó al objetivo de ${targetDuration.toFixed(1)}s`);
     }
-    const duration = resolveVideoDuration(voiceDuration, targetDuration, config.minDuration, preferTarget);
+    const duration = voiceMode === "file"
+      ? voiceDuration
+      : resolveVideoDuration(voiceDuration, targetDuration, config.minDuration, preferTarget);
     const fittedVoice = path.join(dir, "voice-fitted.wav");
     await fitAudioDuration(voice, fittedVoice, voiceDuration, duration, config);
     const srtFile = path.join(dir, "subtitles.srt");
@@ -216,6 +218,12 @@ export async function runPipeline(job, trigger, options, onProgress) {
       brollDownloadedCount: brollResult.downloadedCount,
       brollUsedCount: new Set(timeline.map(segment => segment.file)).size,
       clipsUsed,
+      voiceMode,
+      voiceFileUsed,
+      audioDurationSeconds: voiceDuration,
+      subtitlePosition: TEXT_LAYOUT.subtitle.zone,
+      overlayPosition: TEXT_LAYOUT.overlay.zone,
+      overlapCheckPassed: validateTextLayout(),
       generationMode: config.generationMode,
       visualMode,
       usedFallback: brollResult.fallbackUsed,
@@ -233,7 +241,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
       throw error;
     }
     await fs.writeFile(reportFile, JSON.stringify(report, null, 2));
-    return { demo: false, avatarMode: "local", generationMode: config.generationMode, plan, warnings: report.warnings, report, videoUrl: `/runs/${job.id}/reel.mp4` };
+    return { demo: false, avatarMode: "local", generationMode: config.generationMode, voiceMode, plan, warnings: report.warnings, report, videoUrl: `/runs/${job.id}/reel.mp4` };
   }
 
   onProgress("avatar", "Generando avatar y voz con HeyGen");

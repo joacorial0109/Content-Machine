@@ -79,6 +79,8 @@ PORT=3000
 DEMO_MODE=true
 AVATAR_MODE=local
 GENERATION_MODE=ai
+VOICE_MODE=windows
+VOICE_FILE=
 TARGET_DURATION_SECONDS=35
 MIN_DURATION_SECONDS=25
 OPENAI_API_KEY=
@@ -100,6 +102,8 @@ Para generar gratis sin OpenAI:
 DEMO_MODE=false
 AVATAR_MODE=local
 GENERATION_MODE=template
+VOICE_MODE=windows
+VOICE_FILE=
 OPENAI_API_KEY=
 PEXELS_API_KEY=tu_clave_de_pexels
 ```
@@ -142,7 +146,7 @@ El modo demo usa una voz sintética instalada en Windows. Los archivos quedan en
 3. Completá `OPENAI_API_KEY` y `PEXELS_API_KEY`.
 4. Reiniciá el servidor y generá primero un video corto.
 
-Este modo usa voz sintética de Windows cuando está disponible. Si falla, intenta OpenAI TTS. Si ambas opciones fallan, genera una pista silenciosa para que el render no quede bloqueado; esta degradación debe revisarse antes de publicar.
+Este modo usa voz sintética de Windows cuando `VOICE_MODE=windows`. No usa OpenAI TTS. Si la voz local falla, genera una pista silenciosa de respaldo y lo informa como warning.
 
 ### Plan manual sin OpenAI
 
@@ -166,17 +170,28 @@ Configurá `GENERATION_MODE=manual`, `AVATAR_MODE=local` y una clave de Pexels. 
 
 El plan debe contener entre 5 y 8 escenas y narración suficiente para `MIN_DURATION_SECONDS`.
 
+### Voz propia sin OpenAI
+
+Usá `VOICE_MODE=file` para narrar con un MP3 o WAV grabado o generado fuera de la aplicación. Podés elegir el archivo desde la interfaz o configurar una ruta local:
+
+```dotenv
+VOICE_MODE=file
+VOICE_FILE=C:\Audio\narracion.mp3
+```
+
+El archivo se usa únicamente en la computadora local. El timeline, b-roll, overlays y subtítulos se adaptan a la duración real del audio. Si queda debajo de `MIN_DURATION_SECONDS`, la corrida falla para evitar aceptar un reel demasiado corto.
+
 ### Template local sin OpenAI
 
 Configurá `GENERATION_MODE=template` y escribí una idea en el disparador. El servidor crea seis escenas locales, queries genéricas para Pexels, overlays, subtítulos y caption. No llama a OpenAI.
 
 El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos, subtítulos semánticos y duración estimada. El montaje usa cortes de 2,5 a 4 segundos, aplica movimiento suave y consume todos los clips únicos antes de repetir uno con otro crop/zoom.
 
-En `manual` y `template`, la voz se ajusta a `TARGET_DURATION_SECONDS` sin permitir que el resultado baje de `MIN_DURATION_SECONDS`. Los overlays muestran hasta 4 palabras durante los primeros 2,5 segundos de cada escena; los subtítulos usan hasta 6 palabras por bloque y mantienen margen seguro en la parte inferior.
+En `manual` y `template` con voz Windows, la voz se ajusta a `TARGET_DURATION_SECONDS` sin permitir que el resultado baje de `MIN_DURATION_SECONDS`. Con `VOICE_MODE=file`, se respeta la duración real del audio. Los overlays muestran hasta 4 palabras durante los primeros 2,5 segundos de cada escena en la zona segura superior; los subtítulos usan hasta 6 palabras por bloque en la zona segura inferior.
 
 El modo real local exige al menos tres clips descargados de Pexels. Si no los consigue después de probar queries alternativas, el job falla con `No se encontraron clips de Pexels suficientes`; nunca vuelve a la placa del demo. Después del render, FFprobe confirma que `finalDurationSeconds` sea mayor o igual a `MIN_DURATION_SECONDS`. Un video más corto se marca como fallido.
 
-Cada ejecución guarda `report.json` con `requestedDurationSeconds`, `finalDurationSeconds`, `durationDeltaSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `repeatedClipCount`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`. Si el resultado supera la duración pedida por más de 5 segundos, agrega un warning al reporte y a la interfaz.
+Cada ejecución guarda `report.json` con `requestedDurationSeconds`, `finalDurationSeconds`, `durationDeltaSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `repeatedClipCount`, `voiceMode`, `voiceFileUsed`, `audioDurationSeconds`, `subtitlePosition`, `overlayPosition`, `overlapCheckPassed`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`.
 
 ### Flujo completo con HeyGen
 

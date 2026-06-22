@@ -4,6 +4,7 @@ import { assertRealConfig, missingForRealConfig } from "../src/config.js";
 
 const base = {
   generationMode: "ai",
+  voiceMode: "windows",
   openaiKey: "openai-test",
   pexelsKey: "pexels-test",
   heygenKey: "",
@@ -59,4 +60,14 @@ test("manual y template exigen AVATAR_MODE local", () => {
       "AVATAR_MODE debe ser local cuando GENERATION_MODE es manual o template"
     ]);
   }
+});
+
+test("VOICE_MODE file funciona sin OpenAI ni HeyGen", () => {
+  const input = { ...base, generationMode: "manual", avatarMode: "local", voiceMode: "file", openaiKey: "" };
+  assert.deepEqual(missingForRealConfig(input), []);
+});
+
+test("VOICE_MODE windows mantiene el flujo local", () => {
+  const input = { ...base, generationMode: "manual", avatarMode: "local", voiceMode: "windows", openaiKey: "" };
+  assert.deepEqual(missingForRealConfig(input), []);
 });
