@@ -8,6 +8,14 @@ Aplicación local que convierte una idea, noticia o texto en un reel vertical. E
 - **Real local:** `DEMO_MODE=false` y `AVATAR_MODE=local`. Usa OpenAI para investigar y escribir, Pexels para el b-roll y voz local con respaldo en OpenAI TTS. No requiere HeyGen.
 - **HeyGen:** `DEMO_MODE=false` y `AVATAR_MODE=heygen`. Agrega el avatar y la voz configurados en HeyGen al flujo real.
 
+La generación del plan se controla por separado con `GENERATION_MODE`:
+
+- `ai`: usa OpenAI para investigar y escribir; requiere `OPENAI_API_KEY`.
+- `manual`: recibe un plan JSON pegado por el usuario; no requiere OpenAI.
+- `template`: crea seis escenas con plantillas locales a partir de la idea; no requiere OpenAI.
+
+Los modos `manual` y `template` requieren `AVATAR_MODE=local`.
+
 ## Requisitos
 
 - Node.js 20 o superior.
@@ -70,6 +78,9 @@ Configuración completa disponible:
 PORT=3000
 DEMO_MODE=true
 AVATAR_MODE=local
+GENERATION_MODE=ai
+TARGET_DURATION_SECONDS=35
+MIN_DURATION_SECONDS=25
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 HEYGEN_API_KEY=
@@ -81,7 +92,19 @@ FFMPEG_PATH=ffmpeg
 FFPROBE_PATH=ffprobe
 ```
 
-`AVATAR_MODE` solo acepta `local` o `heygen`. Para probar OpenAI + Pexels sin HeyGen, usá `DEMO_MODE=false` y `AVATAR_MODE=local`. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
+`AVATAR_MODE` solo acepta `local` o `heygen`. Para probar OpenAI + Pexels sin HeyGen, usá `DEMO_MODE=false` y `AVATAR_MODE=local`. `TARGET_DURATION_SECONDS` define el objetivo del guion y render; `MIN_DURATION_SECONDS` impide aceptar videos demasiado cortos. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
+
+Para generar gratis sin OpenAI:
+
+```dotenv
+DEMO_MODE=false
+AVATAR_MODE=local
+GENERATION_MODE=template
+OPENAI_API_KEY=
+PEXELS_API_KEY=tu_clave_de_pexels
+```
+
+También podés usar `GENERATION_MODE=manual` y pegar el plan desde la interfaz.
 
 No subas `.env`, `settings.json`, claves, voces, videos generados ni archivos de usuario. Ya están excluidos por `.gitignore`.
 
@@ -120,6 +143,38 @@ El modo demo usa una voz sintética instalada en Windows. Los archivos quedan en
 4. Reiniciá el servidor y generá primero un video corto.
 
 Este modo usa voz sintética de Windows cuando está disponible. Si falla, intenta OpenAI TTS. Si ambas opciones fallan, genera una pista silenciosa para que el render no quede bloqueado; esta degradación debe revisarse antes de publicar.
+
+### Plan manual sin OpenAI
+
+Configurá `GENERATION_MODE=manual`, `AVATAR_MODE=local` y una clave de Pexels. La interfaz mostrará un editor grande que acepta JSON con esta forma:
+
+```json
+{
+  "title": "Título",
+  "hook": "Hook",
+  "narration": "Narración completa de al menos 25 segundos",
+  "caption": "Caption #hashtags",
+  "scenes": [
+    {
+      "line": "Texto narrado de la escena",
+      "brollQuery": "morning routine",
+      "overlayText": "Idea clave"
+    }
+  ]
+}
+```
+
+El plan debe contener entre 5 y 8 escenas y narración suficiente para `MIN_DURATION_SECONDS`.
+
+### Template local sin OpenAI
+
+Configurá `GENERATION_MODE=template` y escribí una idea en el disparador. El servidor crea seis escenas locales, queries genéricas para Pexels, overlays, subtítulos y caption. No llama a OpenAI.
+
+El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos, subtítulos semánticos y duración estimada. El montaje corta cada 3 a 5 segundos, aplica movimiento suave a los clips y repite material cuando hace falta para alcanzar la duración objetivo.
+
+El modo real local exige al menos tres clips descargados de Pexels. Si no los consigue después de probar queries alternativas, el job falla con `No se encontraron clips de Pexels suficientes`; nunca vuelve a la placa del demo. Después del render, FFprobe confirma que `finalDurationSeconds` sea mayor o igual a `MIN_DURATION_SECONDS`. Un video más corto se marca como fallido.
+
+Cada ejecución guarda `report.json` con `finalDurationSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`.
 
 ### Flujo completo con HeyGen
 

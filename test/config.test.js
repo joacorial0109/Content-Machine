@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { assertRealConfig, missingForRealConfig } from "../src/config.js";
 
 const base = {
+  generationMode: "ai",
   openaiKey: "openai-test",
   pexelsKey: "pexels-test",
   heygenKey: "",
@@ -35,4 +36,27 @@ test("rechaza valores desconocidos de AVATAR_MODE", () => {
   assert.deepEqual(missingForRealConfig({ ...base, avatarMode: "otro" }), [
     "AVATAR_MODE debe ser local o heygen"
   ]);
+});
+
+test("generation manual no exige OpenAI", () => {
+  const input = { ...base, generationMode: "manual", avatarMode: "local", openaiKey: "" };
+  assert.deepEqual(missingForRealConfig(input), []);
+});
+
+test("generation template no exige OpenAI", () => {
+  const input = { ...base, generationMode: "template", avatarMode: "local", openaiKey: "" };
+  assert.deepEqual(missingForRealConfig(input), []);
+});
+
+test("generation AI exige OpenAI", () => {
+  const input = { ...base, generationMode: "ai", avatarMode: "local", openaiKey: "" };
+  assert.deepEqual(missingForRealConfig(input), ["OPENAI_API_KEY"]);
+});
+
+test("manual y template exigen AVATAR_MODE local", () => {
+  for (const generationMode of ["manual", "template"]) {
+    assert.deepEqual(missingForRealConfig({ ...base, generationMode, avatarMode: "heygen" }), [
+      "AVATAR_MODE debe ser local cuando GENERATION_MODE es manual o template"
+    ]);
+  }
 });
