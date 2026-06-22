@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { secondsToSrt, makeSceneOverlaySrt, makeSrt } from "../src/media.js";
+import { secondsToSrt, makeSceneOverlaySrt, makeSrt, TEXT_LAYOUT, validateTextLayout } from "../src/media.js";
 
 test("formatea tiempos SRT", () => assert.equal(secondsToSrt(65.432), "00:01:05,432"));
 test("divide subtítulos largos y termina en la duración", () => {
@@ -35,4 +35,11 @@ test("overlay se limita a cuatro palabras y dura solo al inicio", () => {
   assert.match(srt, /00:00:00,000 --> 00:00:02,500/);
   assert.match(srt, /uno dos tres cuatro/);
   assert.doesNotMatch(srt, /cinco seis/);
+});
+
+test("overlay y subtítulo usan zonas seguras distintas", () => {
+  assert.equal(TEXT_LAYOUT.overlay.zone, "top-safe");
+  assert.equal(TEXT_LAYOUT.subtitle.zone, "bottom-safe");
+  assert.notEqual(TEXT_LAYOUT.overlay.alignment, TEXT_LAYOUT.subtitle.alignment);
+  assert.equal(validateTextLayout(), true);
 });

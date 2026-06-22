@@ -5,7 +5,8 @@ Aplicación local que convierte una idea, noticia o texto en un reel vertical. E
 ## Modos disponibles
 
 - **Demo local:** `DEMO_MODE=true`. No consume APIs. Genera un MP4 con voz sintética de Windows, subtítulos y una plantilla visual.
-- **Real local:** `DEMO_MODE=false` y `AVATAR_MODE=local`. Usa OpenAI para investigar y escribir, Pexels para el b-roll y voz local con respaldo en OpenAI TTS. No requiere HeyGen.
+- **Real sin avatar:** `DEMO_MODE=false` y `AVATAR_MODE=none`. Usa Pexels, voz Windows o audio propio. OpenAI solo es necesario si `GENERATION_MODE=ai`.
+- **Avatar local:** `AVATAR_MODE=local`. Superpone una imagen o video propio sobre el b-roll, sin sincronización labial obligatoria.
 - **HeyGen:** `DEMO_MODE=false` y `AVATAR_MODE=heygen`. Agrega el avatar y la voz configurados en HeyGen al flujo real.
 
 La generación del plan se controla por separado con `GENERATION_MODE`:
@@ -14,7 +15,7 @@ La generación del plan se controla por separado con `GENERATION_MODE`:
 - `manual`: recibe un plan JSON pegado por el usuario; no requiere OpenAI.
 - `template`: crea seis escenas con plantillas locales a partir de la idea; no requiere OpenAI.
 
-Los modos `manual` y `template` requieren `AVATAR_MODE=local`.
+Los modos `manual` y `template` funcionan con `AVATAR_MODE=none`, `local` o `heygen`.
 
 ## Requisitos
 
@@ -77,8 +78,14 @@ Configuración completa disponible:
 ```dotenv
 PORT=3000
 DEMO_MODE=true
-AVATAR_MODE=local
+AVATAR_MODE=none
+LOCAL_AVATAR_FILE=
+LOCAL_AVATAR_POSITION=bottom-right
+LOCAL_AVATAR_SIZE=medium
+AVATAR_USAGE=strategic
 GENERATION_MODE=ai
+VOICE_MODE=windows
+VOICE_FILE=
 TARGET_DURATION_SECONDS=35
 MIN_DURATION_SECONDS=25
 OPENAI_API_KEY=
@@ -92,14 +99,16 @@ FFMPEG_PATH=ffmpeg
 FFPROBE_PATH=ffprobe
 ```
 
-`AVATAR_MODE` solo acepta `local` o `heygen`. Para probar OpenAI + Pexels sin HeyGen, usá `DEMO_MODE=false` y `AVATAR_MODE=local`. `TARGET_DURATION_SECONDS` define el objetivo del guion y render; `MIN_DURATION_SECONDS` impide aceptar videos demasiado cortos. `MUSIC_FILE` puede contener la ruta absoluta de una pista propia o licenciada.
+`AVATAR_MODE` acepta `none`, `local` o `heygen`. `VOICE_MODE` acepta `windows`, `file` o `heygen`; voz y avatar HeyGen deben seleccionarse juntos. `TARGET_DURATION_SECONDS` define el objetivo del guion y render; un audio propio conserva su duración real.
 
 Para generar gratis sin OpenAI:
 
 ```dotenv
 DEMO_MODE=false
-AVATAR_MODE=local
+AVATAR_MODE=none
 GENERATION_MODE=template
+VOICE_MODE=windows
+VOICE_FILE=
 OPENAI_API_KEY=
 PEXELS_API_KEY=tu_clave_de_pexels
 ```
@@ -138,15 +147,15 @@ El modo demo usa una voz sintética instalada en Windows. Los archivos quedan en
 ### OpenAI + Pexels sin HeyGen
 
 1. Conseguí claves válidas de OpenAI y Pexels.
-2. Configurá `DEMO_MODE=false` y `AVATAR_MODE=local`.
+2. Configurá `DEMO_MODE=false` y `AVATAR_MODE=none`.
 3. Completá `OPENAI_API_KEY` y `PEXELS_API_KEY`.
 4. Reiniciá el servidor y generá primero un video corto.
 
-Este modo usa voz sintética de Windows cuando está disponible. Si falla, intenta OpenAI TTS. Si ambas opciones fallan, genera una pista silenciosa para que el render no quede bloqueado; esta degradación debe revisarse antes de publicar.
+Este modo usa voz sintética de Windows cuando `VOICE_MODE=windows`. No usa OpenAI TTS. Si la voz local falla, genera una pista silenciosa de respaldo y lo informa como warning.
 
 ### Plan manual sin OpenAI
 
-Configurá `GENERATION_MODE=manual`, `AVATAR_MODE=local` y una clave de Pexels. La interfaz mostrará un editor grande que acepta JSON con esta forma:
+Configurá `GENERATION_MODE=manual`, `AVATAR_MODE=none` y una clave de Pexels. La interfaz mostrará un editor grande que acepta JSON con esta forma:
 
 ```json
 {
@@ -166,34 +175,82 @@ Configurá `GENERATION_MODE=manual`, `AVATAR_MODE=local` y una clave de Pexels. 
 
 El plan debe contener entre 5 y 8 escenas y narración suficiente para `MIN_DURATION_SECONDS`.
 
+### Voz propia sin OpenAI
+
+Usá `VOICE_MODE=file` para narrar con un MP3, WAV o M4A grabado o generado fuera de la aplicación. Podés elegir el archivo desde la interfaz o configurar una ruta local:
+
+```dotenv
+VOICE_MODE=file
+VOICE_FILE=C:\Audio\narracion.mp3
+```
+
+El archivo se usa únicamente en la computadora local. El timeline, b-roll, overlays y subtítulos se adaptan a la duración real del audio. Si queda debajo de `MIN_DURATION_SECONDS`, la corrida falla para evitar aceptar un reel demasiado corto.
+
 ### Template local sin OpenAI
 
 Configurá `GENERATION_MODE=template` y escribí una idea en el disparador. El servidor crea seis escenas locales, queries genéricas para Pexels, overlays, subtítulos y caption. No llama a OpenAI.
 
 El plan real contiene entre 5 y 8 escenas, búsquedas alternativas de b-roll, overlays cortos, subtítulos semánticos y duración estimada. El montaje usa cortes de 2,5 a 4 segundos, aplica movimiento suave y consume todos los clips únicos antes de repetir uno con otro crop/zoom.
 
-En `manual` y `template`, la voz se ajusta a `TARGET_DURATION_SECONDS` sin permitir que el resultado baje de `MIN_DURATION_SECONDS`. Los overlays muestran hasta 4 palabras durante los primeros 2,5 segundos de cada escena; los subtítulos usan hasta 6 palabras por bloque y mantienen margen seguro en la parte inferior.
+En `manual` y `template` con voz Windows, la voz se ajusta a `TARGET_DURATION_SECONDS` sin permitir que el resultado baje de `MIN_DURATION_SECONDS`. Con `VOICE_MODE=file`, se respeta la duración real del audio. Los overlays muestran hasta 4 palabras durante los primeros 2,5 segundos de cada escena en la zona segura superior; los subtítulos usan hasta 6 palabras por bloque en la zona segura inferior.
 
 El modo real local exige al menos tres clips descargados de Pexels. Si no los consigue después de probar queries alternativas, el job falla con `No se encontraron clips de Pexels suficientes`; nunca vuelve a la placa del demo. Después del render, FFprobe confirma que `finalDurationSeconds` sea mayor o igual a `MIN_DURATION_SECONDS`. Un video más corto se marca como fallido.
 
-Cada ejecución guarda `report.json` con `requestedDurationSeconds`, `finalDurationSeconds`, `durationDeltaSeconds`, `targetDurationSeconds`, `minDurationSeconds`, `brollDownloadedCount`, `brollUsedCount`, `repeatedClipCount`, `visualMode`, `usedFallback`, `warnings`, `errors` y `durationMinimumPass`. Si el resultado supera la duración pedida por más de 5 segundos, agrega un warning al reporte y a la interfaz.
+Cada ejecución guarda `report.json` con duración solicitada/final, b-roll y repeticiones, `voiceMode`, `audioSourceType`, `audioWarning`, `avatarMode`, `avatarFileUsed`, `avatarProvider`, `avatarPosition`, `avatarDurationSeconds`, `avatarWarning`, `avatarSafeAreaCheckPassed`, `overlapCheckPassed`, warnings y errores.
+
+## Cómo cambiar la voz del video
+
+### Opción A: Voz Windows
+
+Configurá `VOICE_MODE=windows` y dejá `VOICE_FILE=` vacío. Es rápida y gratis, pero la calidad depende de las voces instaladas en Windows.
+
+### Opción B: Audio propio
+
+1. Grabá o generá un MP3, WAV o M4A.
+2. Desde **Configuración del video**, elegí **Archivo de audio propio** y subilo, o pegá su ruta.
+3. También podés configurar `VOICE_MODE=file` y `VOICE_FILE=assets/voice/audio.mp3`.
+4. El timeline, b-roll y subtítulos se ajustan a la duración real del audio.
+
+## Cómo usar avatar
+
+### Sin avatar
+
+Usá `AVATAR_MODE=none`. Mantiene el reel de b-roll actual sin capas adicionales.
+
+### Avatar local gratis
+
+Guardá una imagen o video propio y configurá:
+
+```dotenv
+AVATAR_MODE=local
+LOCAL_AVATAR_FILE=assets/avatar/avatar.png
+LOCAL_AVATAR_POSITION=bottom-right
+LOCAL_AVATAR_SIZE=medium
+AVATAR_USAGE=strategic
+```
+
+La interfaz también permite subir PNG, JPG, WEBP, MP4, MOV o WEBM. El avatar queda elevado sobre la zona segura de subtítulos. `AVATAR_USAGE` acepta `none`, `intro`, `outro`, `full` o `strategic`.
+
+### HeyGen opcional
+
+Seleccioná voz y avatar HeyGen y configurá sus tres credenciales. Es un servicio externo que puede tener costo. Manual y template pueden usarlo sin OpenAI.
 
 ### Flujo completo con HeyGen
 
 1. Creá un avatar y una voz propios o autorizados en HeyGen.
 2. Copiá sus valores `Avatar ID` y `Voice ID`.
 3. Configurá `DEMO_MODE=false` y `AVATAR_MODE=heygen`.
-4. Completá OpenAI, Pexels y las tres variables de HeyGen.
+4. Completá Pexels y las tres variables de HeyGen. OpenAI solo hace falta para generación AI.
 5. Reiniciá el servidor y generá primero un video corto para controlar costos.
 
 También podés cargar la configuración desde el botón **Configuración** de la interfaz. Se guarda localmente en `settings.json`, que está ignorado por Git.
 
 El flujo real realiza estas etapas:
 
-1. OpenAI investiga el tema y devuelve hook, narración, escenas, caption y fuentes.
+1. Manual, template u OpenAI producen el plan según la opción elegida.
 2. Pexels busca clips verticales relacionados con cada escena.
-3. En `local`, el sistema genera voz simple y usa el b-roll como imagen principal.
-4. En `heygen`, HeyGen genera el presentador con el avatar y la voz configurados.
+3. La voz viene de Windows, un archivo propio o HeyGen.
+4. El avatar puede omitirse, superponerse desde un archivo local o generarse con HeyGen.
 5. FFmpeg monta el video, mezcla música, agrega subtítulos y produce el MP4 final.
 
 ## Comandos
