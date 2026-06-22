@@ -15,7 +15,8 @@ export function makeSrt(scenes, duration) {
     const semantic = Array.isArray(scene.subtitleChunks) && scene.subtitleChunks.length
       ? scene.subtitleChunks
       : balancedSubtitleChunks(scene.line);
-    return semantic.map(line => ({ line, sceneIndex, sceneWeight: Number(scene.estimatedDuration) || 1 }));
+    return semantic.flatMap(line => balancedSubtitleChunks(line, 6))
+      .map(line => ({ line, sceneIndex, sceneWeight: Number(scene.estimatedDuration) || 1 }));
   });
   const sceneWeightTotals = scenes.reduce((sum, scene) => sum + (Number(scene.estimatedDuration) || 1), 0) || 1;
   const sceneChunkCounts = new Map();
@@ -31,7 +32,7 @@ export function makeSrt(scenes, duration) {
   }).join("\n");
 }
 
-export function balancedSubtitleChunks(text, maxWords = 7) {
+export function balancedSubtitleChunks(text, maxWords = 6) {
   const clauses = String(text || "").split(/(?<=[.!?;:,])\s+/).map(value => value.trim()).filter(Boolean);
   return clauses.flatMap(clause => {
     const words = clause.split(/\s+/);
@@ -50,8 +51,9 @@ export function makeSceneOverlaySrt(scenes, duration) {
   let cursor = 0;
   return scenes.map((scene, index) => {
     const end = index === scenes.length - 1 ? duration : cursor + duration * weights[index] / total;
-    const text = String(scene.overlayText || "").trim();
-    const block = text ? `${index + 1}\n${secondsToSrt(cursor)} --> ${secondsToSrt(end)}\n${text}\n` : "";
+    const text = String(scene.overlayText || "").trim().split(/\s+/).slice(0, 4).join(" ");
+    const overlayEnd = Math.min(end, cursor + 2.5);
+    const block = text ? `${index + 1}\n${secondsToSrt(cursor)} --> ${secondsToSrt(overlayEnd)}\n${text}\n` : "";
     cursor = end;
     return block;
   }).filter(Boolean).join("\n");
@@ -137,14 +139,21 @@ export async function composeReelWithBroll({ voice, timeline, subtitles, overlay
   const segments = [];
   timeline.forEach((segment, index) => {
     const name = `scene${index}`;
-    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0006,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,trim=duration=${segment.duration.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
+    const variants = [
+      { zoom: "0.00035", x: "iw/2-(iw/zoom/2)", y: "ih/2-(ih/zoom/2)" },
+      { zoom: "0.00050", x: "0", y: "ih/2-(ih/zoom/2)" },
+      { zoom: "0.00045", x: "iw-(iw/zoom)", y: "ih/2-(ih/zoom/2)" },
+      { zoom: "0.00030", x: "iw/2-(iw/zoom/2)", y: "ih-(ih/zoom)" }
+    ];
+    const variant = variants[Number(segment.cropVariant) % variants.length] || variants[0];
+    filters.push(`[${index + 1}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+${variant.zoom},1.06)':x='${variant.x}':y='${variant.y}':d=1:s=1080x1920:fps=30,trim=duration=${segment.duration.toFixed(3)},setpts=PTS-STARTPTS[${name}]`);
     segments.push(`[${name}]`);
   });
   filters.push(`${segments.join("")}concat=n=${timeline.length}:v=1:a=0[montage]`);
   const escapedSrt = ffmpegPath(subtitles);
   const escapedOverlays = ffmpegPath(overlays);
-  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=35,MarginR=35,MarginV=75'[captioned]`);
-  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=8,MarginL=40,MarginR=40,MarginV=35'[video]`);
+  filters.push(`[montage]subtitles='${escapedSrt}':force_style='FontName=Arial,FontSize=18,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginL=55,MarginR=55,MarginV=150'[captioned]`);
+  filters.push(`[captioned]subtitles='${escapedOverlays}':force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H0000A5FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=8,MarginL=70,MarginR=70,MarginV=175'[video]`);
   filters.push("[0:a]highpass=f=80,lowpass=f=10000,acompressor=threshold=-18dB:ratio=3:attack=20:release=250,loudnorm=I=-16:LRA=7:TP=-1.5,aresample=48000[voice]");
 
   let audioMap = "[voice]";

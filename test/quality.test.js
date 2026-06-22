@@ -23,6 +23,7 @@ const scenes = Array.from({ length: 5 }, (_, index) => ({
 test("la duración final nunca baja del mínimo", () => {
   assert.equal(resolveVideoDuration(8, 20, 25), 25);
   assert.equal(resolveVideoDuration(40, 35, 25), 40);
+  assert.equal(resolveVideoDuration(45.5, 35, 25, true), 35);
 });
 
 test("un plan con menos de cinco escenas requiere expansión", () => {
@@ -54,6 +55,27 @@ test("el modo local no vuelve a placa si existe al menos un b-roll", () => {
   assert.ok(timeline.every(segment => segment.file === "clip.mp4"));
   assert.ok(timeline.every(segment => segment.duration <= 4));
   assert.ok(timeline.every(segment => segment.duration >= 3));
+});
+
+test("no repite clips antes de usar todas las alternativas", () => {
+  const assigned = scenes.slice(0, 3).map((scene, index) => ({
+    ...scene,
+    broll: { file: `clip-${index}.mp4` }
+  }));
+  const timeline = buildCutTimeline(assigned, 12, 3);
+  assert.deepEqual(timeline.slice(0, 3).map(segment => segment.file), [
+    "clip-0.mp4", "clip-1.mp4", "clip-2.mp4"
+  ]);
+  assert.ok(timeline.slice(0, 3).every(segment => segment.repeated === false));
+  assert.equal(timeline[3].repeated, true);
+  assert.notEqual(timeline[3].cropVariant, timeline[0].cropVariant);
+  const report = buildRunReport({
+    requestedDurationSeconds: 12,
+    finalDurationSeconds: 12,
+    minDurationSeconds: 10,
+    clipsUsed: timeline
+  });
+  assert.equal(report.repeatedClipCount, 1);
 });
 
 test("modo real local selecciona exclusivamente el renderer de Pexels", () => {
@@ -117,4 +139,17 @@ test("reporte registra duración y cantidad de b-roll descargado", () => {
   assert.equal(report.brollDownloadedCount, 4);
   assert.equal(report.generationMode, "template");
   assert.equal(report.durationMinimumPass, true);
+});
+
+test("reporte avisa cuando supera el target por más de cinco segundos", () => {
+  const report = buildRunReport({
+    requestedDurationSeconds: 35,
+    targetDurationSeconds: 35,
+    finalDurationSeconds: 45.5,
+    minDurationSeconds: 25,
+    clipsUsed: []
+  });
+  assert.equal(report.requestedDurationSeconds, 35);
+  assert.equal(report.durationDeltaSeconds, 10.5);
+  assert.match(report.warnings.join(" "), /supera la duración objetivo/);
 });

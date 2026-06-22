@@ -40,7 +40,7 @@ export async function createPlan(trigger, cfg, options = {}) {
   };
   const request = {
     model: cfg.openaiModel,
-    instructions: `Sos investigador, guionista y editor de reels. Investigá primero el tema cuando incluya afirmaciones actuales. Escribí español rioplatense natural, tono ${options.tone || "directo"}, para ${options.platform || "TikTok e Instagram Reels"}. El video debe durar aproximadamente ${targetDuration} segundos y nunca menos de ${cfg.minDuration} segundos. Creá entre 5 y 8 escenas. La narración debe coincidir exactamente, en el mismo orden, con la unión de line de todas las escenas y debe tener suficientes palabras para la duración pedida. Cada escena necesita: texto narrado, duración estimada, 1 a 4 subtitleChunks que sean frases completas y naturales, una búsqueda visual específica en inglés, 2 alternativas más genéricas y un overlayText de 2 a 6 palabras que resuma una idea clave. Nunca cortes subtítulos en fragmentos sin sentido. No inventes datos. El hook debe atrapar en 2 segundos. Incluí únicamente URLs realmente consultadas.`,
+    instructions: `Sos investigador, guionista y editor de reels. Investigá primero el tema cuando incluya afirmaciones actuales. Escribí español rioplatense natural, tono ${options.tone || "directo"}, para ${options.platform || "TikTok e Instagram Reels"}. El video debe durar aproximadamente ${targetDuration} segundos y nunca menos de ${cfg.minDuration} segundos. Creá entre 5 y 8 escenas. La narración debe coincidir exactamente, en el mismo orden, con la unión de line de todas las escenas y debe tener suficientes palabras para la duración pedida. Cada escena necesita: texto narrado, duración estimada, 1 a 4 subtitleChunks de hasta 6 palabras que sean frases naturales, una búsqueda visual específica en inglés, 2 alternativas más genéricas y un overlayText de 2 a 4 palabras que resuma una idea clave. Nunca cortes subtítulos en fragmentos sin sentido. No inventes datos. El hook debe atrapar en 2 segundos. Incluí únicamente URLs realmente consultadas.`,
     input: trigger,
     tools: [{ type: "web_search_preview", search_context_size: "medium" }],
     text: { format: { type: "json_schema", name: "reel_plan", strict: true, schema } }
@@ -109,15 +109,21 @@ export async function createAvatarVideo(plan, cfg) {
 }
 
 export async function findBroll(query, cfg) {
-  const data = await api(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=3`, {
+  return (await findBrollCandidates(query, cfg, 1))[0] || null;
+}
+
+export async function findBrollCandidates(query, cfg, limit = 6) {
+  const data = await api(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=8`, {
     headers: { Authorization: cfg.pexelsKey }
   }).then(r => r.json());
+  const candidates = [];
   for (const video of data.videos || []) {
     const files = (video.video_files || []).filter(x => x.link && x.width && x.height);
     files.sort((a, b) => Math.abs((a.width / a.height) - 9 / 16) - Math.abs((b.width / b.height) - 9 / 16));
-    if (files[0]) return files[0].link;
+    if (files[0] && !candidates.includes(files[0].link)) candidates.push(files[0].link);
+    if (candidates.length >= limit) break;
   }
-  return null;
+  return candidates;
 }
 
 export async function download(url, destination) {

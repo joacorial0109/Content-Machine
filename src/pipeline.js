@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config, assertRealConfig } from "./config.js";
-import { createPlan, createAvatarVideo, createOpenAiSpeech, findBroll, download } from "./clients.js";
+import { createPlan, createAvatarVideo, createOpenAiSpeech, findBrollCandidates, download } from "./clients.js";
 import { createTemplatePlan, parseManualPlan } from "./generation.js";
 import { compose, composeLocal, composeReelWithBroll, createLocalVoice, createSilentAudio, durationOf, fitAudioDuration, makeSceneOverlaySrt, makeSrt } from "./media.js";
 import { applyBrollFallbacks, assertMinimumDuration, buildBrollQueries, buildCutTimeline, buildRunReport, minimumRequiredBroll, resolveVideoDuration, selectVisualMode } from "./quality.js";
@@ -34,17 +34,22 @@ function demoPlan(trigger) {
 
 async function resolveSceneBroll(plan, dir, onProgress) {
   const resolved = new Array(plan.scenes.length).fill(null);
+  const usedUrls = new Set();
   const warnings = [];
   onProgress("broll", "Buscando material visual para cada escena");
   for (let index = 0; index < plan.scenes.length; index++) {
     const queries = buildBrollQueries(plan.scenes[index]);
     let lastError = null;
+    let reusableCandidate = null;
     for (let queryIndex = 0; queryIndex < queries.length; queryIndex++) {
       try {
-        const url = await findBroll(queries[queryIndex], config);
+        const candidates = await findBrollCandidates(queries[queryIndex], config);
+        reusableCandidate ||= candidates[0] ? { url: candidates[0], queryIndex } : null;
+        const url = candidates.find(candidate => !usedUrls.has(candidate));
         if (!url) continue;
         const file = path.join(dir, `broll-${index}.mp4`);
         await download(url, file);
+        usedUrls.add(url);
         resolved[index] = {
           file,
           fileName: path.basename(file),
@@ -53,6 +58,22 @@ async function resolveSceneBroll(plan, dir, onProgress) {
           queryFallback: queryIndex > 0
         };
         break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!resolved[index] && reusableCandidate) {
+      try {
+        const file = path.join(dir, `broll-${index}.mp4`);
+        await download(reusableCandidate.url, file);
+        resolved[index] = {
+          file,
+          fileName: path.basename(file),
+          url: reusableCandidate.url,
+          query: queries[reusableCandidate.queryIndex],
+          queryFallback: true,
+          repeatedSource: true
+        };
       } catch (error) {
         lastError = error;
       }
@@ -122,6 +143,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
     } catch (error) {
       const failedReport = buildRunReport({
         finalDurationSeconds: 0,
+        requestedDurationSeconds: targetDuration,
         targetDurationSeconds: targetDuration,
         minDurationSeconds: config.minDuration,
         sceneCount: plan.scenes.length,
@@ -165,18 +187,29 @@ export async function runPipeline(job, trigger, options, onProgress) {
       voiceDuration = targetDuration;
       warnings.push("Se usó audio silencioso de respaldo");
     }
-    const duration = resolveVideoDuration(voiceDuration, targetDuration, config.minDuration);
+    const preferTarget = ["manual", "template"].includes(config.generationMode);
+    if (preferTarget && voiceDuration > targetDuration + 5) {
+      warnings.push(`La narración original duraba ${voiceDuration.toFixed(1)}s y se ajustó al objetivo de ${targetDuration.toFixed(1)}s`);
+    }
+    const duration = resolveVideoDuration(voiceDuration, targetDuration, config.minDuration, preferTarget);
     const fittedVoice = path.join(dir, "voice-fitted.wav");
     await fitAudioDuration(voice, fittedVoice, voiceDuration, duration, config);
     const srtFile = path.join(dir, "subtitles.srt");
     await fs.writeFile(srtFile, makeSrt(plan.scenes, duration));
     const overlaysFile = path.join(dir, "overlays.srt");
     await fs.writeFile(overlaysFile, makeSceneOverlaySrt(plan.scenes, duration));
-    const timeline = buildCutTimeline(plan.scenes, duration, 4);
+    const timeline = buildCutTimeline(plan.scenes, duration, 3.25);
     const output = path.join(dir, "reel.mp4");
-    const clipsUsed = timeline.map(segment => ({ file: path.basename(segment.file), sceneIndex: segment.sceneIndex, duration: segment.duration }));
+    const clipsUsed = timeline.map(segment => ({
+      file: path.basename(segment.file),
+      sceneIndex: segment.sceneIndex,
+      duration: segment.duration,
+      repeated: segment.repeated,
+      cropVariant: segment.cropVariant
+    }));
     let report = buildRunReport({
       finalDurationSeconds: 0,
+      requestedDurationSeconds: targetDuration,
       targetDurationSeconds: targetDuration,
       minDurationSeconds: config.minDuration,
       sceneCount: plan.scenes.length,
@@ -200,7 +233,7 @@ export async function runPipeline(job, trigger, options, onProgress) {
       throw error;
     }
     await fs.writeFile(reportFile, JSON.stringify(report, null, 2));
-    return { demo: false, avatarMode: "local", generationMode: config.generationMode, plan, warnings, report, videoUrl: `/runs/${job.id}/reel.mp4` };
+    return { demo: false, avatarMode: "local", generationMode: config.generationMode, plan, warnings: report.warnings, report, videoUrl: `/runs/${job.id}/reel.mp4` };
   }
 
   onProgress("avatar", "Generando avatar y voz con HeyGen");

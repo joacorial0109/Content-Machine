@@ -6,10 +6,10 @@ function words(value) {
 
 function shortOverlay(value, fallback) {
   const selected = words(value).length ? words(value) : words(fallback);
-  return selected.slice(0, 6).join(" ");
+  return selected.slice(0, 4).join(" ");
 }
 
-function semanticChunks(text, maxWords = 8) {
+function semanticChunks(text, maxWords = 6) {
   const clauses = String(text || "").split(/(?<=[.!?;:,])\s+/).map(value => value.trim()).filter(Boolean);
   return clauses.flatMap(clause => {
     const parts = words(clause);
